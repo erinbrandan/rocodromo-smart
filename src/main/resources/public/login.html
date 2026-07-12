@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocódromo Smart - Iniciar Sesión</title>
+    <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+<div class="contenedor-auth">
+    <div class="tarjeta-auth">
+        <div class="auth-cabecera">
+            <h1>🧗 Rocódromo Smart</h1>
+            <p>Inicia sesión para empezar a entrenar</p>
+        </div>
+
+        <form id="form-login" class="formulario-auth">
+            <div class="grupo-input">
+                <label for="login-correo">Correo electrónico</label>
+                <input type="email" id="login-correo" required placeholder="ejemplo@correo.com">
+            </div>
+            <div class="grupo-input">
+                <label for="login-password">Contraseña</label>
+                <input type="password" id="login-password" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn-primario">Entrar al Panel</button>
+            <p class="cambio-auth">¿No tienes cuenta? <a href="/registro.html">Regístrate aquí</a></p>
+        </form>
+    </div>
+</div>
+<script src="/js/login.js"></script>
+</body>
+</html>

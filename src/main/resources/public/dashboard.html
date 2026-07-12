@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocódromo Smart - Panel de Control</title>
+    <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+<header>
+    <div class="logo-container">
+        <h1>🧗 Rocódromo Smart</h1>
+        <p>Usuario activo: <span id="nombre-usuario-header" style="color: var(--color-primario); font-weight: bold;">...</span></p>
+    </div>
+    <div class="controles-cabecera">
+        <span id="badge-conexion" class="badge desconectado">Desconectado</span>
+        <button id="btn-logout" class="btn-logout-icono">🚪 Cerrar Sesión</button>
+    </div>
+</header>
+
+<main class="contenedor-principal">
+    <section class="panel-lateral">
+        <nav class="navegacion-tabs">
+            <button id="tab-entrenar" class="tab-btn activa">💪 Entrenar</button>
+            <button id="tab-crear" class="tab-btn">🛠️ Crear Vía</button>
+        </nav>
+
+        <div id="seccion-entrenar" class="contenido-tab activa">
+            <div class="tarjeta control-rapido">
+                <h3>⚙️ Control de Hardware</h3>
+                <div class="botonera">
+                    <button id="btn-apagar" class="btn btn-peligro">Apagar Panel</button>
+                    <button id="btn-test" class="btn btn-secundario">Test de LEDs</button>
+                </div>
+            </div>
+
+            <div class="tarjeta catalogo-rutas">
+                <div class="cabecera-catalogo">
+                    <h3>🗺️ Catálogo de Vías</h3>
+                    <div class="filtros-estado">
+                        <button id="filtro-proyectos" class="btn-filtro activo">Proyectos</button>
+                        <button id="filtro-encadenadas" class="btn-filtro">Encadenadas</button>
+                        <button id="filtro-comunidad" class="btn-filtro">Comunidad</button>
+                    </div>
+                </div>
+                <div id="lista-rutas" class="lista-vias">
+                    <p class="cargando">Cargando vías...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="seccion-crear" class="contenido-tab">
+            <div class="tarjeta constructor-via">
+                <h3>🛠️ MoonBoard Builder</h3>
+                <p class="subtitulo">Haz clic en las presas de la matriz derecha para diseñar tu camino lumínico.</p>
+
+                <form id="form-crear-via" class="formulario-auth">
+                    <div class="grupo-input">
+                        <label for="crear-nombre">Nombre de la vía</label>
+                        <input type="text" id="crear-nombre" required placeholder="Ej: Dinámico de dedos">
+                    </div>
+
+                    <div class="grupo-input">
+                        <label for="crear-grado">Grado de dificultad</label>
+                        <select id="crear-grado" required>
+                            <option value="" disabled selected>Selecciona el grado</option>
+                            <option value="6a">6a</option>
+                            <option value="6a+">6a+</option>
+                            <option value="6b">6b</option>
+                            <option value="6b+">6b+</option>
+                            <option value="6c">6c</option>
+                            <option value="6c+">6c+</option>
+                            <option value="7a">7a</option>
+                            <option value="7a+">7a+</option>
+                            <option value="7b">7b</option>
+                            <option value="7c">7c</option>
+                        </select>
+                    </div>
+
+                    <div class="grupo-input">
+                        <label>Presas seleccionadas</label>
+                        <div id="contador-presas" class="contador-badge">0 presas elegidas</div>
+                    </div>
+
+                    <div class="botonera-vertical">
+                        <button type="submit" id="btn-guardar-via" class="btn-primario" disabled>Guardar en Base de Datos</button>
+                        <button type="button" id="btn-limpiar-creador" class="btn btn-secundario">Limpiar Selección</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel-visual">
+        <div class="tarjeta">
+            <h2 id="titulo-matriz">🧱 Matriz de Presas (Simulación)</h2>
+            <p id="subtitulo-matriz" class="subtitulo">Las presas activas se iluminarán en el color correspondiente</p>
+
+            <div id="contenedor-accion-via" style="margin: 0.5rem 0 1rem 0; display: none;">
+                <button id="btn-completar-via" class="btn" style="background-color: #27ae60; color: white; font-weight: bold; padding: 0.6rem 1.2rem; border: none; border-radius: 4px; cursor: pointer; width: 100%;">
+                    ¡Encadenada! 🧗
+                </button>
+            </div>
+
+            <div id="matriz-presas" class="cuadrilla-presas">
+            </div>
+        </div>
+    </section>
+</main>
+
+<template id="plantilla-item-ruta">
+    <div class="item-ruta">
+        <div class="info-ruta">
+            <h4 class="ruta-nombre"></h4>
+            <p class="ruta-equipador"></p>
+        </div>
+        <span class="grado-ruta"></span>
+        <button class="btn-borrar-via" title="Borrar del catálogo" style="display: none;">🗑️</button>
+        <button class="btn-agregar-comunidad" title="Añadir a mis Proyectos" style="display: none;">➕</button>
+    </div>
+</template>
+
+<footer>
+    <p>MoonBoard Smart Ecosystem v1.1 — Desarrollado por Erin Brandan Vázquez Enes &copy; 2026</p>
+</footer>
+
+<script src="/js/dashboard.js"></script>
+</body>
+</html>

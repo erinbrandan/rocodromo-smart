@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocódromo Smart - Registro</title>
+    <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+<div class="contenedor-auth">
+    <div class="tarjeta-auth">
+        <div class="auth-cabecera">
+            <h1>🧗 Rocódromo Smart</h1>
+            <p>Crea tu perfil de escalador local</p>
+        </div>
+
+        <form id="form-registro" class="formulario-auth">
+            <div class="grupo-input">
+                <label for="reg-nombre">Nombre</label>
+                <input type="text" id="reg-nombre" required placeholder="Tu nombre">
+            </div>
+            <div class="grupo-input">
+                <label for="reg-apellidos">Apellidos</label>
+                <input type="text" id="reg-apellidos" required placeholder="Tu apellido">
+            </div>
+            <div class="grupo-input">
+                <label for="reg-correo">Correo electrónico</label>
+                <input type="email" id="reg-correo" required placeholder="ejemplo@correo.com">
+            </div>
+            <div class="grupo-input">
+                <label for="reg-password">Contraseña</label>
+                <input type="password" id="reg-password" required placeholder="Crea una contraseña">
+            </div>
+            <button type="submit" class="btn-primario">Crear Cuenta</button>
+            <p class="cambio-auth">¿Ya tienes cuenta? <a href="/login.html">Inicia sesión</a></p>
+        </form>
+    </div>
+</div>
+<script src="/js/registro.js"></script>
+</body>
+</html>
