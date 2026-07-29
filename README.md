@@ -212,6 +212,41 @@ http://<IP_RASPBERRY>:8080
 El servidor redirige automáticamente a `/login.html`.
 
 ---
+## 📶 Configuración del Punto de Acceso Wi-Fi
+
+La Raspberry Pi puede funcionar como un **Punto de Acceso (Access Point)** para que dispositivos móviles o portátiles se conecten directamente al sistema sin necesidad de un router externo.
+
+### Componentes utilizados
+
+- **hostapd**: crea y gestiona la red Wi-Fi.
+- **dnsmasq**: proporciona servicio DHCP para asignar direcciones IP automáticamente.
+- **NetworkManager + systemd-networkd**: gestionan la configuración de red en Raspberry Pi OS Bookworm.
+
+### Configuración recomendada
+
+- Configurar `hostapd` indicando el archivo `hostapd.conf` mediante `DAEMON_CONF`.
+- Asignar una **IP estática** a `wlan0` (por ejemplo `192.168.4.1/24`), imprescindible para que `dnsmasq` pueda entregar direcciones IP a los clientes.
+- Configurar `NetworkManager` para que no gestione `wlan0`, evitando que pierda la IP estática tras reinicios o cambios en la red Ethernet.
+- En caso de que la interfaz Wi-Fi aparezca bloqueada, desbloquearla con:
+
+```bash
+sudo rfkill unblock wlan
+```
+
+### Comandos de comprobación
+
+```bash
+# Comprobar hostapd
+sudo hostapd /etc/hostapd/hostapd.conf
+
+# Comprobar servidor DHCP
+sudo dnsmasq -d
+
+# Asignar temporalmente una IP estática
+sudo ip addr add 192.168.4.1/24 dev wlan0
+```
+
+Esta configuración garantiza que cualquier dispositivo pueda conectarse directamente a la Raspberry Pi y acceder a la aplicación web incluso sin conexión a Internet.
 
 ## 📁 Estructura del Proyecto
 
@@ -281,3 +316,5 @@ rocodromo-smart/
 Copyleft © 2026 — Todos los derechos reservados al desarrollador.
 
 **Autor:** Erin Brandan Vázquez Enes
+
+**Nota:** Esta configuración está orientada a Raspberry Pi OS Bookworm (Debian 12), donde `NetworkManager` sustituye a `dhcpcd` como gestor de red por defecto.
