@@ -198,6 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ledsSeleccionadosCreacion.splice(indice, 1);
         }
         actualizarNodosCreadorVisual();
+        iluminarSeleccionFisica();
     }
 
     function actualizarNodosCreadorVisual() {
@@ -214,9 +215,22 @@ document.addEventListener("DOMContentLoaded", () => {
         btnGuardarVia.disabled = ledsSeleccionadosCreacion.length === 0;
     }
 
+    function iluminarSeleccionFisica() {
+        if (ledsSeleccionadosCreacion.length === 0) {
+            fetch("/api/hardware/apagar", { method: "POST" }).catch(() => {});
+            return;
+        }
+        fetch("/api/hardware/encender-manual", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ leds: ledsSeleccionadosCreacion })
+        }).catch(err => console.error("Error iluminando selección:", err));
+    }
+
     btnLimpiarCreador.addEventListener("click", () => {
         ledsSeleccionadosCreacion = [];
         actualizarNodosCreadorVisual();
+        iluminarSeleccionFisica();
     });
 
     // --- GUARDAR NUEVA VÍA (SUBIR A JAVALIN) ---
@@ -245,6 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 formCrearVia.reset();
                 ledsSeleccionadosCreacion = [];
                 actualizarNodosCreadorVisual();
+                fetch("/api/hardware/apagar", { method: "POST" }).catch(() => {});
                 tabEntrenar.click();
             })
             .catch(err => {

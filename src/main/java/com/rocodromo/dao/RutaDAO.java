@@ -152,7 +152,7 @@ public class RutaDAO {
     public List<Integer> obtenerLedsDeRuta(int rutaId) {
         List<Integer> indicesLeds = new ArrayList<>();
         String sql = "SELECT P.indice_led FROM RUTA_PRESAS RP " +
-                "INNER JOIN PRESAS P ON RP.presa_id = P.id " +
+                "INNER JOIN PRESAS P ON RP.presa_id = P.indice_led " +
                 "WHERE RP.ruta_id = ?";
 
         try (Connection conn = DatabaseConfig.getConnection();

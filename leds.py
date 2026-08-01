@@ -56,6 +56,68 @@ def apagar_tira(pin_gpio=18, total_leds=150):
     print("⬛ Panel completamente a oscuras.")
 
 
+def modo_daemon(total_leds, pin_gpio, brillo):
+    print(f"🤖 [Daemon] Iniciando modo daemon (GPIO: {pin_gpio}, LEDs: {total_leds}, brillo: {brillo})")
+    if GPIO_DISPONIBLE:
+        pin_placa = getattr(board, f"D{pin_gpio}")
+        tira = neopixel.NeoPixel(pin_placa, total_leds, brightness=brillo / 255.0, auto_write=False)
+        tira.fill((0, 0, 0))
+        tira.show()
+    else:
+        tira = None
+        print("💻 [Daemon] Modo simulación (sin GPIO)")
+
+    print("OK:daemon:iniciado", flush=True)
+
+    for raw in sys.stdin:
+        linea = raw.strip()
+        if not linea:
+            continue
+
+        if linea == "salir":
+            if tira is not None:
+                tira.fill((0, 0, 0))
+                tira.show()
+            print("OK:salir", flush=True)
+            break
+
+        elif linea == "apagar":
+            if tira is not None:
+                tira.fill((0, 0, 0))
+                tira.show()
+            print("OK:apagar", flush=True)
+
+        elif linea.startswith("encender:"):
+            try:
+                _, valores = linea.split(":", 1)
+                indices = [int(x) for x in valores.split(",") if x]
+                if tira is not None:
+                    tira.fill((0, 0, 0))
+                    for i in indices:
+                        if 0 <= i < total_leds:
+                            tira[i] = (0, 255, 150)
+                    tira.show()
+                print(f"OK:encender:{len(indices)}", flush=True)
+            except Exception as e:
+                print(f"ERR:encender:{e}", flush=True)
+
+        elif linea.startswith("agregar:"):
+            try:
+                _, valores = linea.split(":", 1)
+                indices = [int(x) for x in valores.split(",") if x]
+                if tira is not None:
+                    for i in indices:
+                        if 0 <= i < total_leds:
+                            tira[i] = (0, 255, 150)
+                    tira.show()
+                print(f"OK:agregar:{len(indices)}", flush=True)
+            except Exception as e:
+                print(f"ERR:agregar:{e}", flush=True)
+
+        else:
+            print(f"ERR:comando_desconocido:{linea}", flush=True)
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("❌ Error: Faltan argumentos de ejecución.", file=sys.stderr)
@@ -65,7 +127,22 @@ if __name__ == "__main__":
 
     comando = sys.argv[1].lower()
 
-    if comando == "encender":
+    if comando == "daemon":
+        if len(sys.argv) < 5:
+            print("❌ Error: El comando 'daemon' requiere total_leds, pin_gpio y brillo.",
+                  file=sys.stderr)
+            sys.exit(1)
+        try:
+            modo_daemon(
+                total_leds=int(sys.argv[2]),
+                pin_gpio=int(sys.argv[3]),
+                brillo=int(sys.argv[4]),
+            )
+        except ValueError:
+            print("❌ Error: Los parámetros del daemon deben ser números enteros.", file=sys.stderr)
+            sys.exit(1)
+
+    elif comando == "encender":
         if len(sys.argv) < 6:
             print("❌ Error: El comando 'encender' ahora requiere la configuración de hardware completa.",
                   file=sys.stderr)

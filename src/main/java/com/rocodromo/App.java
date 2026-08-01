@@ -71,6 +71,10 @@ public class App {
         app.post("/api/hardware/apagar", HardwareController::apagarPanel);
         app.post("/api/hardware/encender-manual", HardwareController::encenderManual);
 
+        // Control fino de LEDs individuales (feedback en tiempo real desde el creador de vías)
+        app.post("/api/hardware/encender-led", HardwareController::encenderUnicoLed);
+        app.post("/api/hardware/agregar-led", HardwareController::agregarLed);
+
         // Gestión de Usuarios y Autenticación real con SQLite
         app.post("/api/usuarios/registro", UsuarioController::registrar);
         app.post("/api/usuarios/login", UsuarioController::login);
@@ -92,6 +96,16 @@ public class App {
 
         // 3. Arrancar el servidor en el puerto 8080
         app.start(8080);
+
+        // 4. Inicializar el daemon Python para control en tiempo real de los LEDs
+        HardwareController.iniciarHardware();
+
+        // 5. Registrar parada ordenada del daemon al cerrar la aplicación
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("🛑 Apagando servidor...");
+            HardwareController.detenerHardware();
+            app.stop();
+        }));
 
         System.out.println("🌐 Servidor Web HTTP operativo de forma local.");
         System.out.println("🔗 Abre en tu navegador: http://localhost:8080");

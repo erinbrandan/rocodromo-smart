@@ -17,9 +17,17 @@ import java.util.stream.Collectors;
 /**
  * Servicio de hardware que gestiona la comunicación con el script Python
  * de control de la tira de LEDs WS2812B.
+ * <p>
+ * Opera en dos modos:
+ * <ul>
+ *   <li><b>Daemon</b> (preferente): proceso Python persistente que recibe
+ *       comandos por stdin. Inicializa NeoPixel una sola vez.</li>
+ *   <li><b>CLI</b> (fallback): invoca {@code leds.py} como proceso separado
+ *       en cada llamada.</li>
+ * </ul>
  *
  * @author Erin Brandan Vazquez Enes
- * @version 1.0
+ * @version 2.0
  */
 public class LedService {
 
@@ -29,15 +37,17 @@ public class LedService {
     private static final int TIMEOUT_SEGUNDOS = 15;
     private static final String PROP_SCRIPT_PATH = "rocodromo.script.path";
 
+    // Daemon
+    private Process daemonProcess;
+    private BufferedWriter daemonStdin;
+    private volatile boolean daemonMode = false;
+    private final Object daemonLock = new Object();
+
     public LedService() {
         this.configDAO = new ConfiguracionLedDAO();
         this.rutaScript = resolverRutaScript();
     }
 
-    /**
-     * Resuelve la ruta al script leds.py buscando en: propiedad del sistema,
-     * directorio de trabajo actual y ruta absoluta de despliegue.
-     */
     private String resolverRutaScript() {
         String prop = System.getProperty(PROP_SCRIPT_PATH);
         if (prop != null) {
@@ -57,11 +67,124 @@ public class LedService {
         return "./leds.py";
     }
 
+    // ---------------------------------------------------------------
+    //  Gestión del daemon
+    // ---------------------------------------------------------------
+
     /**
-     * Envía la lista de LEDs al script Python para encender la ruta en el panel físico.
-     *
-     * @param indicesLeds Lista de índices de LEDs a iluminar.
-     * @return true si el script se invocó correctamente; false en caso contrario.
+     * Inicia el proceso Python en modo daemon. No hace nada si ya está activo.
+     */
+    public boolean iniciarDaemon() {
+        synchronized (daemonLock) {
+            if (daemonMode) return true;
+
+            ConfiguracionLed config = configDAO.obtenerConfiguracion();
+            int totalLeds = (config != null) ? config.getTotalLeds() : 150;
+            int pinGpio = (config != null) ? config.getPinGpio() : 18;
+            int brillo = (config != null) ? config.getBrillo() : 50;
+
+            try {
+                ProcessBuilder pb = new ProcessBuilder(
+                        "sudo", "-n", "python3", rutaScript, "daemon",
+                        String.valueOf(totalLeds),
+                        String.valueOf(pinGpio),
+                        String.valueOf(brillo)
+                );
+                pb.directory(new File(System.getProperty("user.dir", ".")));
+                pb.redirectErrorStream(true);
+
+                System.out.println("🐍 [LedService] Arrancando daemon: " + String.join(" ", pb.command()));
+                daemonProcess = pb.start();
+                daemonStdin = new BufferedWriter(new OutputStreamWriter(daemonProcess.getOutputStream()));
+
+                Thread reader = new Thread(() -> {
+                    try (BufferedReader r = new BufferedReader(new InputStreamReader(daemonProcess.getInputStream()))) {
+                        String linea;
+                        while ((linea = r.readLine()) != null) {
+                            System.out.println("🐍 [Daemon] " + linea);
+                        }
+                    } catch (IOException e) {
+                        if (daemonMode) {
+                            System.err.println("❌ [LedService] Daemon desconectado: " + e.getMessage());
+                            daemonMode = false;
+                        }
+                    }
+                }, "daemon-stdout");
+                reader.setDaemon(true);
+                reader.start();
+
+                Thread.sleep(300);
+                if (daemonProcess.isAlive()) {
+                    daemonMode = true;
+                    System.out.println("✅ [LedService] Daemon Python operativo.");
+                    return true;
+                } else {
+                    System.err.println("❌ [LedService] El daemon murió al arrancar.");
+                    return false;
+                }
+            } catch (Exception e) {
+                System.err.println("❌ [LedService] Error al iniciar daemon: " + e.getMessage());
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Detiene el daemon enviando el comando "salir" y esperando su terminación.
+     */
+    public void detenerDaemon() {
+        synchronized (daemonLock) {
+            daemonMode = false;
+            if (daemonStdin != null) {
+                try {
+                    daemonStdin.write("salir");
+                    daemonStdin.newLine();
+                    daemonStdin.flush();
+                } catch (IOException e) {
+                    // ignorar
+                }
+            }
+            if (daemonProcess != null) {
+                try {
+                    daemonProcess.waitFor(2, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    daemonProcess.destroyForcibly();
+                }
+            }
+        }
+    }
+
+    /**
+     * Envía un comando de texto al daemon por stdin. Si el daemon no está
+     * activo, intenta arrancarlo.
+     */
+    private boolean enviarComandoAlDaemon(String comando) {
+        synchronized (daemonLock) {
+            if (!daemonMode) {
+                iniciarDaemon();
+            }
+            if (!daemonMode || daemonStdin == null) return false;
+
+            try {
+                daemonStdin.write(comando);
+                daemonStdin.newLine();
+                daemonStdin.flush();
+                return true;
+            } catch (IOException e) {
+                System.err.println("❌ [LedService] Error escribiendo al daemon: " + e.getMessage());
+                daemonMode = false;
+                return false;
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    //  Métodos públicos de control de LEDs
+    // ---------------------------------------------------------------
+
+    /**
+     * Enciende un conjunto de LEDs (limpia el panel y enciende solo esos).
+     * Usa el daemon si está disponible; si no, invoca el script por CLI.
      */
     public boolean enviarRutaAlHardware(List<Integer> indicesLeds) {
         if (indicesLeds == null || indicesLeds.isEmpty()) {
@@ -69,30 +192,63 @@ public class LedService {
             return false;
         }
 
-        String ledsFormateados = indicesLeds.stream()
+        List<Integer> indicesCeroBase = indicesLeds.stream()
+                .map(i -> i - 1)
+                .toList();
+
+        // Daemon
+        String comando = "encender:" + indicesCeroBase.stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(","));
+        if (enviarComandoAlDaemon(comando)) {
+            return true;
+        }
+
+        // Fallback CLI
+        return ejecutarPorCLI(indicesCeroBase);
+    }
+
+    /**
+     * Enciende un único LED (limpia el panel primero).
+     * Ideal para feedback en tiempo real al pulsar presas desde el creador.
+     */
+    public boolean encenderLedUnico(int indice) {
+        return enviarRutaAlHardware(List.of(indice));
+    }
+
+    /**
+     * Apaga todos los LEDs.
+     */
+    public boolean apagarPanel() {
+        String comando = "apagar";
+        if (enviarComandoAlDaemon(comando)) {
+            return true;
+        }
+        return apagarPorCLI();
+    }
+
+    // ---------------------------------------------------------------
+    //  Fallback por CLI (proceso independiente por llamada)
+    // ---------------------------------------------------------------
+
+    private boolean ejecutarPorCLI(List<Integer> indicesCeroBase) {
+        String argumentos = indicesCeroBase.stream()
                 .map(String::valueOf)
                 .collect(Collectors.joining(","));
 
         ConfiguracionLed config = configDAO.obtenerConfiguracion();
-
         int totalLeds = (config != null) ? config.getTotalLeds() : 150;
         int pinGpio = (config != null) ? config.getPinGpio() : 18;
         int brillo = (config != null) ? config.getBrillo() : 50;
 
-        System.out.println("🚀 [LedService] Invocando leds.py para " + indicesLeds.size() + " LEDs...");
-        System.out.println("⚙️ [Config Activa BBDD] GPIO: " + pinGpio + " | Total LEDs: " + totalLeds + " | Brillo: " + brillo);
-
-        return ejecutarScriptPython("encender", ledsFormateados, totalLeds, pinGpio, brillo);
+        System.out.println("⚠️ [LedService] Usando fallback CLI (sin daemon).");
+        return ejecutarScriptPython("encender", argumentos, totalLeds, pinGpio, brillo);
     }
 
-    /** Apaga todos los LEDs del panel invocando el script Python con brillo 0. */
-    public boolean apagarPanel() {
-        System.out.println("🚀 [LedService] Enviando señal de apagado general al panel...");
-
+    private boolean apagarPorCLI() {
         ConfiguracionLed config = configDAO.obtenerConfiguracion();
         int totalLeds = (config != null) ? config.getTotalLeds() : 150;
         int pinGpio = (config != null) ? config.getPinGpio() : 18;
-
         return ejecutarScriptPython("apagar", "", totalLeds, pinGpio, 0);
     }
 
@@ -133,8 +289,6 @@ public class LedService {
                 return false;
             }
 
-            // Si el script no falló en los primeros 50ms, se asume que corre en background
-            // y se libera la petición web para no bloquear el servidor
             return true;
 
         } catch (IOException e) {

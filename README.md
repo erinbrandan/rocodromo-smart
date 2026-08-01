@@ -316,5 +316,4 @@ rocodromo-smart/
 Copyleft © 2026 — Todos los derechos reservados al desarrollador.
 
 **Autor:** Erin Brandan Vázquez Enes
-
 **Nota:** Esta configuración está orientada a Raspberry Pi OS Bookworm (Debian 12), donde `NetworkManager` sustituye a `dhcpcd` como gestor de red por defecto.

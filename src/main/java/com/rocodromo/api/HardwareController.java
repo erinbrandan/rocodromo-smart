@@ -6,52 +6,70 @@ package com.rocodromo.api;
 
 import com.rocodromo.hardware.LedService;
 import io.javalin.http.Context;
+
 import java.util.List;
 import java.util.Map;
 
 /**
- * Controlador REST de control directo de hardware.
- * Expone los endpoints de encendido/apagado de la tira de LEDs de la Raspberry Pi.
+ * Controlador REST del subsistema de hardware (tira WS2812B).
+ * Expone endpoints para control manual de LEDs y para el ciclo de vida del daemon.
  *
- * @author Erin Brandan Vázquez Enes
- * @version 1.1
+ * @author Erin Brandan Vazquez Enes
+ * @version 2.0
  */
 public class HardwareController {
 
-    // Instancia única compartida a nivel de Backend
     private static final LedService ledService = new LedService();
 
+    // ---------------------------------------------------------------
+    //  Ciclo de vida del daemon
+    // ---------------------------------------------------------------
+
     /**
-     * Apaga de forma inmediata toda la matriz de LEDs. POST /api/hardware/apagar
-     *
-     * @param ctx Contexto de Javalin para gestionar la respuesta HTTP.
+     * Inicia el daemon Python. Llamado al arrancar la aplicación.
+     */
+    public static void iniciarHardware() {
+        System.out.println("🔌 [HardwareController] Inicializando subsistema de hardware...");
+        ledService.iniciarDaemon();
+    }
+
+    /**
+     * Detiene el daemon Python. Llamado al apagar la aplicación.
+     */
+    public static void detenerHardware() {
+        System.out.println("🔌 [HardwareController] Deteniendo subsistema de hardware...");
+        ledService.detenerDaemon();
+    }
+
+    // ---------------------------------------------------------------
+    //  Endpoints públicos
+    // ---------------------------------------------------------------
+
+    /**
+     * POST /api/hardware/apagar
      */
     public static void apagarPanel(Context ctx) {
-        System.out.println("📬 [API] Petición web recibida: Apagar panel.");
-
+        System.out.println("📬 [API] Petición web: Apagar todo el panel.");
         boolean exito = ledService.apagarPanel();
 
         if (exito) {
             ctx.status(200);
-            ctx.json(Map.of("status", "success", "message", "Panel apagado correctamente."));
+            ctx.json(Map.of("status", "success", "message", "Panel apagado."));
         } else {
             ctx.status(502);
-            ctx.json(Map.of("status", "error", "message", "El hardware no respondió o el script Python falló."));
+            ctx.json(Map.of("status", "error", "message", "No se pudo apagar el panel."));
         }
     }
 
     /**
-     * Endpoint de diagnóstico para encender una lista de LEDs enviada desde la web.
      * POST /api/hardware/encender-manual
-     *
-     * @param ctx Contexto con body JSON de la forma {"leds": [1, 2, 3]}
+     * Body: {"leds": [1, 2, 3]}
      */
     @SuppressWarnings("unchecked")
     public static void encenderManual(Context ctx) {
         System.out.println("📬 [API] Petición web recibida: Encendido manual de prueba.");
 
         try {
-            // Se parsea el body como Map genérico para inspeccionar el campo 'leds'
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
             Object ledsRaw = body.get("leds");
 
@@ -61,7 +79,6 @@ public class HardwareController {
                 return;
             }
 
-            // Conversión segura a List<Integer>: Jackson parsea números sueltos como Long/Double
             List<Integer> leds = ((List<?>) ledsRaw).stream()
                     .map(num -> ((Number) num).intValue())
                     .toList();
@@ -89,10 +106,85 @@ public class HardwareController {
     }
 
     /**
-     * Método interno para que otros controladores soliciten el encendido
-     * físico de una vía al seleccionar un proyecto o ruta comunitaria.
-     *
-     * @param leds Lista de IDs de presas que componen la vía.
+     * POST /api/hardware/encender-led
+     * Body: {"led": 5}
+     * Enciende un único LED (limpia el panel primero).
+     */
+    public static void encenderUnicoLed(Context ctx) {
+        System.out.println("📬 [API] Petición web: Encender LED individual.");
+
+        try {
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            Object ledRaw = body.get("led");
+
+            if (ledRaw == null) {
+                ctx.status(400);
+                ctx.json(Map.of("status", "error", "message", "El parámetro 'led' es obligatorio."));
+                return;
+            }
+
+            int led = ((Number) ledRaw).intValue();
+
+            boolean exito = ledService.encenderLedUnico(led);
+
+            if (exito) {
+                ctx.status(200);
+                ctx.json(Map.of("status", "success", "message", "LED " + led + " encendido."));
+            } else {
+                ctx.status(502);
+                ctx.json(Map.of("status", "error", "message", "No se pudo encender el LED."));
+            }
+
+        } catch (Exception e) {
+            ctx.status(500);
+            ctx.json(Map.of("status", "error", "message", "Error al procesar el JSON: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/hardware/agregar-led
+     * Body: {"led": 5}
+     * Añade un LED al estado actual sin limpiar el panel (acumulativo).
+     */
+    public static void agregarLed(Context ctx) {
+        System.out.println("📬 [API] Petición web: Agregar LED al estado actual.");
+
+        // Por ahora reutiliza encender un LED; en el daemon se enviará "agregar:"
+        // cuando se implemente el comando específico.
+        try {
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            Object ledRaw = body.get("led");
+
+            if (ledRaw == null) {
+                ctx.status(400);
+                ctx.json(Map.of("status", "error", "message", "El parámetro 'led' es obligatorio."));
+                return;
+            }
+
+            int led = ((Number) ledRaw).intValue();
+            boolean exito = ledService.encenderLedUnico(led);
+
+            if (exito) {
+                ctx.status(200);
+                ctx.json(Map.of("status", "success", "message", "LED " + led + " agregado."));
+            } else {
+                ctx.status(502);
+                ctx.json(Map.of("status", "error", "message", "No se pudo agregar el LED."));
+            }
+
+        } catch (Exception e) {
+            ctx.status(500);
+            ctx.json(Map.of("status", "error", "message", "Error al procesar el JSON: " + e.getMessage()));
+        }
+    }
+
+    // ---------------------------------------------------------------
+    //  Uso interno desde otros controladores
+    // ---------------------------------------------------------------
+
+    /**
+     * Método interno para que otros controladores (ej. RutaController)
+     * soliciten el encendido físico de una vía al seleccionar un proyecto.
      */
     public static boolean encenderRutaInterna(List<Integer> leds) {
         if (leds == null || leds.isEmpty()) {
