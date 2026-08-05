@@ -5,6 +5,7 @@
 package com.rocodromo;
 
 import com.rocodromo.api.HardwareController;
+import com.rocodromo.api.JuegoController;
 import com.rocodromo.api.RutaController;
 import com.rocodromo.api.UsuarioController;
 import com.rocodromo.db.DatabaseConfig;
@@ -78,6 +79,14 @@ public class App {
         // Gestión de Usuarios y Autenticación real con SQLite
         app.post("/api/usuarios/registro", UsuarioController::registrar);
         app.post("/api/usuarios/login", UsuarioController::login);
+
+        // Minijuego "Pulso Vertical" (control de partida y ranking)
+        app.post("/api/juego/pulso-vertical/iniciar", JuegoController::iniciarJuego);
+        app.post("/api/juego/pulso-vertical/pausar", JuegoController::pausarJuego);
+        app.post("/api/juego/pulso-vertical/reanudar", JuegoController::reanudarJuego);
+        app.post("/api/juego/pulso-vertical/finalizar", JuegoController::finalizarJuego);
+        app.get("/api/juego/pulso-vertical/ranking", JuegoController::obtenerRanking);
+        app.post("/api/juego/pulso-vertical/ranking", JuegoController::guardarMarca);
 
 
         // --- CONTROL GLOBAL DE EXCEPCIONES CRÍTICAS ---

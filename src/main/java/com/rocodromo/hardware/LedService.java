@@ -10,6 +10,7 @@ import com.rocodromo.model.ConfiguracionLed;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -36,6 +37,11 @@ public class LedService {
 
     private static final int TIMEOUT_SEGUNDOS = 15;
     private static final String PROP_SCRIPT_PATH = "rocodromo.script.path";
+
+    // Colores del panel (formato HEX RRGGBB)
+    public static final String COLOR_VERDE = "00FF96";
+    public static final String COLOR_ROJO = "FF0000";
+    public static final String COLOR_NARANJA = "FFA500";
 
     // Daemon
     private Process daemonProcess;
@@ -79,7 +85,7 @@ public class LedService {
             if (daemonMode) return true;
 
             ConfiguracionLed config = configDAO.obtenerConfiguracion();
-            int totalLeds = (config != null) ? config.getTotalLeds() : 150;
+            int totalLeds = (config != null) ? config.getTotalLeds() : 198;
             int pinGpio = (config != null) ? config.getPinGpio() : 18;
             int brillo = (config != null) ? config.getBrillo() : 50;
 
@@ -184,12 +190,23 @@ public class LedService {
 
     /**
      * Enciende un conjunto de LEDs (limpia el panel y enciende solo esos).
-     * Usa el daemon si está disponible; si no, invoca el script por CLI.
+     * Usa el color verde por defecto. Daemon si está disponible; si no, CLI.
      */
     public boolean enviarRutaAlHardware(List<Integer> indicesLeds) {
+        return enviarRutaAlHardware(indicesLeds, COLOR_VERDE);
+    }
+
+    /**
+     * Enciende un conjunto de LEDs con un color concreto (HEX RRGGBB).
+     * Limpia el panel y enciende solo esos LEDs.
+     */
+    public boolean enviarRutaAlHardware(List<Integer> indicesLeds, String colorHex) {
         if (indicesLeds == null || indicesLeds.isEmpty()) {
             System.out.println("⚠️ [LedService] Intento de encendido abortado: La lista de LEDs está vacía.");
             return false;
+        }
+        if (colorHex == null || !colorHex.matches("[0-9a-fA-F]{6}")) {
+            colorHex = COLOR_VERDE;
         }
 
         List<Integer> indicesCeroBase = indicesLeds.stream()
@@ -199,13 +216,13 @@ public class LedService {
         // Daemon
         String comando = "encender:" + indicesCeroBase.stream()
                 .map(String::valueOf)
-                .collect(Collectors.joining(","));
+                .collect(Collectors.joining(",")) + ":" + colorHex;
         if (enviarComandoAlDaemon(comando)) {
             return true;
         }
 
         // Fallback CLI
-        return ejecutarPorCLI(indicesCeroBase);
+        return ejecutarPorCLI("encender", indicesCeroBase, colorHex);
     }
 
     /**
@@ -227,42 +244,93 @@ public class LedService {
         return apagarPorCLI();
     }
 
+    /**
+     * Enciende un conjunto de LEDs SIN limpiar el resto del panel.
+     * Se usa para superponer en naranja los LEDs que van a apagarse.
+     */
+    public boolean agregarLedsAlHardware(List<Integer> indicesLeds, String colorHex) {
+        if (indicesLeds == null || indicesLeds.isEmpty()) {
+            System.out.println("⚠️ [LedService] Intento de agregado abortado: La lista de LEDs está vacía.");
+            return false;
+        }
+        if (colorHex == null || !colorHex.matches("[0-9a-fA-F]{6}")) {
+            colorHex = COLOR_NARANJA;
+        }
+
+        List<Integer> indicesCeroBase = indicesLeds.stream()
+                .map(i -> i - 1)
+                .toList();
+
+        // Daemon
+        String comando = "agregar:" + indicesCeroBase.stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(",")) + ":" + colorHex;
+        if (enviarComandoAlDaemon(comando)) {
+            return true;
+        }
+
+        // Fallback CLI
+        return ejecutarPorCLI("agregar", indicesCeroBase, colorHex);
+    }
+
     // ---------------------------------------------------------------
     //  Fallback por CLI (proceso independiente por llamada)
     // ---------------------------------------------------------------
 
     private boolean ejecutarPorCLI(List<Integer> indicesCeroBase) {
+        return ejecutarPorCLI("encender", indicesCeroBase, COLOR_VERDE);
+    }
+
+    private boolean ejecutarPorCLI(String comando, List<Integer> indicesCeroBase, String colorHex) {
         String argumentos = indicesCeroBase.stream()
                 .map(String::valueOf)
                 .collect(Collectors.joining(","));
 
         ConfiguracionLed config = configDAO.obtenerConfiguracion();
-        int totalLeds = (config != null) ? config.getTotalLeds() : 150;
+        int totalLeds = (config != null) ? config.getTotalLeds() : 198;
         int pinGpio = (config != null) ? config.getPinGpio() : 18;
         int brillo = (config != null) ? config.getBrillo() : 50;
 
         System.out.println("⚠️ [LedService] Usando fallback CLI (sin daemon).");
-        return ejecutarScriptPython("encender", argumentos, totalLeds, pinGpio, brillo);
+        return ejecutarScriptPython(comando, argumentos, totalLeds, pinGpio, brillo, colorHex);
     }
 
     private boolean apagarPorCLI() {
         ConfiguracionLed config = configDAO.obtenerConfiguracion();
-        int totalLeds = (config != null) ? config.getTotalLeds() : 150;
+        int totalLeds = (config != null) ? config.getTotalLeds() : 198;
         int pinGpio = (config != null) ? config.getPinGpio() : 18;
         return ejecutarScriptPython("apagar", "", totalLeds, pinGpio, 0);
     }
 
     private boolean ejecutarScriptPython(String comando, String argumentos, int totalLeds, int pinGpio, int brillo) {
-        try {
-            ProcessBuilder pb;
+        return ejecutarScriptPython(comando, argumentos, totalLeds, pinGpio, brillo, null);
+    }
 
-            if (argumentos.isEmpty()) {
-                pb = new ProcessBuilder("sudo", "-n", "python3", rutaScript, comando,
-                        String.valueOf(totalLeds), String.valueOf(pinGpio));
-            } else {
-                pb = new ProcessBuilder("sudo", "-n", "python3", rutaScript, comando, argumentos,
-                        String.valueOf(totalLeds), String.valueOf(pinGpio), String.valueOf(brillo));
+    private boolean ejecutarScriptPython(String comando, String argumentos, int totalLeds, int pinGpio, int brillo, String colorHex) {
+        try {
+            List<String> comandos = new ArrayList<>();
+            comandos.add("sudo");
+            comandos.add("-n");
+            comandos.add("python3");
+            comandos.add(rutaScript);
+            comandos.add(comando);
+
+            if (!argumentos.isEmpty()) {
+                comandos.add(argumentos);
             }
+
+            comandos.add(String.valueOf(totalLeds));
+            comandos.add(String.valueOf(pinGpio));
+
+            // El color solo tiene sentido en los comandos de encendido/agregado
+            if ("encender".equals(comando) || "agregar".equals(comando)) {
+                comandos.add(String.valueOf(brillo));
+                if (colorHex != null) {
+                    comandos.add(colorHex);
+                }
+            }
+
+            ProcessBuilder pb = new ProcessBuilder(comandos);
 
             System.out.println("🐍 [LedService] Ejecutando: " + String.join(" ", pb.command()));
 

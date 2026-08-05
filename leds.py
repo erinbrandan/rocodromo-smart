@@ -27,27 +27,39 @@ def _advertencia_dependencias():
         print("⚠️  [Hardware] O define FORCE_SIMULATION=1 para simular en desarrollo.", file=sys.stderr)
 
 
-def encender_ruta(indices_leds, brillo=50, pin_gpio=18, total_leds=150):
+def _hex_a_rgb(color_hex):
+    """Convierte un color hexadecimal 'RRGGBB' en una tupla (R, G, B)."""
+    color_hex = color_hex.lstrip("#")
+    if len(color_hex) != 6:
+        raise ValueError(f"Color hexadecimal inválido: {color_hex}")
+    return tuple(int(color_hex[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def encender_ruta(indices_leds, brillo=50, pin_gpio=18, total_leds=198, color="00FF96", limpiar=True):
     print(f"🤖 [Python Hardware] Procesando orden de iluminación...")
-    print(f"-> Parámetros: Total LEDs: {total_leds} | Pin GPIO: {pin_gpio} | Brillo: {brillo}")
+    print(f"-> Parámetros: Total LEDs: {total_leds} | Pin GPIO: {pin_gpio} | Brillo: {brillo} | Color: #{color} | Limpiar previo: {limpiar}")
     print(f"-> LEDs a encender: {indices_leds}")
+
+    rgb = _hex_a_rgb(color)
 
     if GPIO_DISPONIBLE:
         pin_placa = getattr(board, f"D{pin_gpio}")
         tira = neopixel.NeoPixel(pin_placa, total_leds, brightness=brillo / 255.0, auto_write=False)
-        tira.fill((0, 0, 0))
+        if limpiar:
+            tira.fill((0, 0, 0))
         for indice in indices_leds:
             if 0 <= indice < total_leds:
-                tira[indice] = (0, 255, 150)
+                tira[indice] = rgb
         tira.show()
         print("💡 [Hardware] Tira de LEDs física actualizada correctamente.")
     else:
         print("💻 [Modo Simulación] Ejecutando en entorno de desarrollo sin GPIO.")
-        print(f"🔮 RENDER VIRTUAL PANEL: Los LEDs {indices_leds} brillarían ahora en la pared "
-              f"con brillo {brillo} en el PIN {pin_gpio}.")
+        accion = "superpondría" if not limpiar else "brillarían"
+        print(f"🔮 RENDER VIRTUAL PANEL: Los LEDs {indices_leds} {accion} en la pared "
+              f"con color #{color} y brillo {brillo} en el PIN {pin_gpio}.")
 
 
-def apagar_tira(pin_gpio=18, total_leds=150):
+def apagar_tira(pin_gpio=18, total_leds=198):
     print(f"🤖 [Python Hardware] Apagando panel por completo (PIN: {pin_gpio} | Total: {total_leds})...")
     if GPIO_DISPONIBLE:
         pin_placa = getattr(board, f"D{pin_gpio}")
@@ -87,32 +99,24 @@ def modo_daemon(total_leds, pin_gpio, brillo):
                 tira.show()
             print("OK:apagar", flush=True)
 
-        elif linea.startswith("encender:"):
+        elif linea.startswith("encender:") or linea.startswith("agregar:"):
             try:
-                _, valores = linea.split(":", 1)
+                comando_daemon, resto = linea.split(":", 1)
+                partes = resto.rsplit(":", 1)
+                valores = partes[0]
+                color_hex = partes[1] if len(partes) == 2 else "00FF96"
                 indices = [int(x) for x in valores.split(",") if x]
+                rgb = _hex_a_rgb(color_hex)
                 if tira is not None:
-                    tira.fill((0, 0, 0))
+                    if comando_daemon == "encender":
+                        tira.fill((0, 0, 0))
                     for i in indices:
                         if 0 <= i < total_leds:
-                            tira[i] = (0, 255, 150)
+                            tira[i] = rgb
                     tira.show()
-                print(f"OK:encender:{len(indices)}", flush=True)
+                print(f"OK:{comando_daemon}:{len(indices)}", flush=True)
             except Exception as e:
-                print(f"ERR:encender:{e}", flush=True)
-
-        elif linea.startswith("agregar:"):
-            try:
-                _, valores = linea.split(":", 1)
-                indices = [int(x) for x in valores.split(",") if x]
-                if tira is not None:
-                    for i in indices:
-                        if 0 <= i < total_leds:
-                            tira[i] = (0, 255, 150)
-                    tira.show()
-                print(f"OK:agregar:{len(indices)}", flush=True)
-            except Exception as e:
-                print(f"ERR:agregar:{e}", flush=True)
+                print(f"ERR:{linea.split(':', 1)[0]}:{e}", flush=True)
 
         else:
             print(f"ERR:comando_desconocido:{linea}", flush=True)
@@ -146,7 +150,7 @@ if __name__ == "__main__":
         if len(sys.argv) < 6:
             print("❌ Error: El comando 'encender' ahora requiere la configuración de hardware completa.",
                   file=sys.stderr)
-            print("Uso: python3 leds.py encender [lista_leds] [total_leds] [pin_gpio] [brillo]", file=sys.stderr)
+            print("Uso: python3 leds.py encender [lista_leds] [total_leds] [pin_gpio] [brillo] [color_RRGGBB]", file=sys.stderr)
             sys.exit(1)
 
         try:
@@ -154,12 +158,41 @@ if __name__ == "__main__":
             total_leds_dinamico = int(sys.argv[3])
             pin_gpio_dinamico = int(sys.argv[4])
             brillo_dinamico = int(sys.argv[5])
+            color_dinamico = sys.argv[6] if len(sys.argv) > 6 else "00FF96"
 
             encender_ruta(
                 indices_leds=lista_enteros,
                 brillo=brillo_dinamico,
                 pin_gpio=pin_gpio_dinamico,
-                total_leds=total_leds_dinamico
+                total_leds=total_leds_dinamico,
+                color=color_dinamico
+            )
+        except ValueError:
+            print("❌ Error: Los parámetros de hardware o la lista de LEDs deben ser números enteros válidos.",
+                  file=sys.stderr)
+            sys.exit(1)
+
+    elif comando == "agregar":
+        if len(sys.argv) < 6:
+            print("❌ Error: El comando 'agregar' requiere la configuración de hardware completa.",
+                  file=sys.stderr)
+            print("Uso: python3 leds.py agregar [lista_leds] [total_leds] [pin_gpio] [brillo] [color_RRGGBB]", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            lista_enteros = [int(x) for x in sys.argv[2].split(",")]
+            total_leds_dinamico = int(sys.argv[3])
+            pin_gpio_dinamico = int(sys.argv[4])
+            brillo_dinamico = int(sys.argv[5])
+            color_dinamico = sys.argv[6] if len(sys.argv) > 6 else "00FF96"
+
+            encender_ruta(
+                indices_leds=lista_enteros,
+                brillo=brillo_dinamico,
+                pin_gpio=pin_gpio_dinamico,
+                total_leds=total_leds_dinamico,
+                color=color_dinamico,
+                limpiar=False
             )
         except ValueError:
             print("❌ Error: Los parámetros de hardware o la lista de LEDs deben ser números enteros válidos.",

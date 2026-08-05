@@ -8,7 +8,9 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.InputStream;
 import java.sql.*;
+import java.util.HashSet;
 import java.util.Scanner;
+import java.util.Set;
 
 /**
  * Configuración del motor de persistencia SQLite para entornos embebidos.
@@ -95,33 +97,42 @@ public class DatabaseConfig {
     }
 
     /**
-     * Verifica si la tabla PRESAS está vacía. De ser así, inserta los 121 registros
-     * maestros vinculando cada posición al índice de su LED correspondiente.
+     * Verifica que la tabla PRESAS contenga los registros maestros del panel
+     * (grid 18×11 = 198 presas). Inserta los que falten, vinculando cada presa
+     * a su índice de LED (1 a 198, coincidiendo con los IDs usados por el frontend
+     * y por RUTA_PRESAS.presa_id).
      */
     private static void poblarPresasSiVacia(Connection conn) {
-        String sqlCheck = "SELECT COUNT(*) FROM PRESAS";
-        String sqlInsert = "INSERT INTO PRESAS (id, posicion_x, posicion_y, indice_led) VALUES (?, ?, ?, ?)";
+        String sqlConsulta = "SELECT indice_led FROM PRESAS";
+        String sqlInsert = "INSERT INTO PRESAS (posicion_x, posicion_y, indice_led) VALUES (?, ?, ?)";
 
         try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sqlCheck)) {
+             ResultSet rs = stmt.executeQuery(sqlConsulta)) {
 
-            if (rs.next() && rs.getInt(1) == 0) {
-                System.out.println("🌱 La tabla PRESAS está vacía. Poblando matriz de 121 leds maestros...");
+            Set<Integer> existentes = new HashSet<>();
+            while (rs.next()) {
+                existentes.add(rs.getInt("indice_led"));
+            }
 
-                try (PreparedStatement pstmt = conn.prepareStatement(sqlInsert)) {
-                    // Se generan las 121 presas en lote
-                    for (int i = 1; i <= 121; i++) {
-                        pstmt.setInt(1, i);         // ID único de la presa (1-121)
-                        pstmt.setInt(2, 0);         // posicion_x por defecto
-                        pstmt.setInt(3, 0);         // posicion_y por defecto
+            if (existentes.size() >= 198 && existentes.containsAll(Set.of(1, 198))) {
+                System.out.println("✅ La tabla PRESAS ya contiene los 198 registros maestros.");
+                return;
+            }
 
-                        // Los LEDs se direccionan en base 0 en el script Python (0 a 120)
-                        pstmt.setInt(4, i - 1);
-
-                        pstmt.addBatch();
-                    }
-                    pstmt.executeBatch();
-                    System.out.println("✅ Matriz de 121 presas inyectada correctamente en el sistema (Mapeo LED Base 0).");
+            try (PreparedStatement pstmt = conn.prepareStatement(sqlInsert)) {
+                int insertados = 0;
+                // Los índices se usan en base 1 (1 a 198) para coincidir con los IDs del frontend
+                for (int i = 1; i <= 198; i++) {
+                    if (existentes.contains(i)) continue;
+                    pstmt.setInt(1, 0);   // posicion_x por defecto
+                    pstmt.setInt(2, 0);   // posicion_y por defecto
+                    pstmt.setInt(3, i);   // indice_led = número de LED (1-198)
+                    pstmt.addBatch();
+                    insertados++;
+                }
+                pstmt.executeBatch();
+                if (insertados > 0) {
+                    System.out.println("✅ Matriz de 198 presas asegurada: se registraron " + insertados + " presas faltantes (Mapeo LED 1-198).");
                 }
             }
         } catch (SQLException e) {

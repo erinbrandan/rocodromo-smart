@@ -25,15 +25,15 @@ Los LEDs direccionables WS2812B requieren una señal de datos con frecuencias de
 La comunicación entre ambos procesos se realiza mediante **pipes del sistema operativo**: Java lanza el script con `ProcessBuilder`, le pasa los parámetros (comando, lista de LEDs, brillo, pin GPIO) como argumentos de consola, y libera inmediatamente el hilo de la petición HTTP tras un chequeo de 50 ms. Si el script no falla en ese intervalo, se asume que la tira se está actualizando en background y la respuesta JSON se devuelve al cliente sin bloquear el servidor.
 
 ```text
-┌─────────────┐   ProcessBuilder    ┌─────────────┐   GPIO / DMA    ┌──────────────┐
-│   Frontend   │ ◄──── JSON ────► │  Java API    │ ──── pipes ────► │  leds.py     │
-│  (Browser)   │                   │  (Javalin)   │                  │  (rpi_ws281x)│
-└─────────────┘                   └──────┬───────┘                  └──────┬───────┘
+┌─────────────┐   ProcessBuilder  ┌─────────────┐   GPIO / DMA     ┌──────────────┐
+│   Frontend  │  ◄──── JSON ────► │  Java API   │ ──── pipes ────► │  leds.py     │
+│  (Browser)  │                   │  (Javalin)  │                  │  (rpi_ws281x)│
+└─────────────┘                   └──────┬──────┘                  └──────┬───────┘
                                          │                                 │
-                                    ┌────▼─────┐                   ┌──────▼───────┐
+                                    ┌────▼──────┐                   ┌──────▼───────┐
                                     │  SQLite   │                   │ Tira WS2812B │
                                     │ (HikariCP)│                   │   GPIO 18    │
-                                    └──────────┘                   └──────────────┘
+                                    └───────────┘                   └──────────────┘
 ```
 
 ### 🌐 Frontend — HTML5, CSS3, JavaScript Vanilla
@@ -48,23 +48,23 @@ Las páginas del frontend son:
 |---|---|
 | `login.html` | Formulario de autenticación de escaladores |
 | `registro.html` | Alta de nuevos usuarios con hash SHA-256 |
-| `dashboard.html` | Panel principal: catálogo de rutas, simulador LED, control de hardware |
-| `css/estilos.css` | Hoja de estilos global del sistema |
+| `dashboard.html` | Panel principal: catálogo de rutas, simulador LED, control de hardware y minijuego Pulso Vertical |
+| `css/estilos.css` | Hoja de estilos global del sistema (incluye simulador y ranking del Pulso Vertical) |
 | `js/login.js` | Lógica de autenticación vía Fetch API |
 | `js/registro.js` | Validación y envío del formulario de registro |
-| `js/dashboard.js` | Motor de interacción: selección de rutas, envío de comandos LED, gestión de estados |
+| `js/dashboard.js` | Motor de interacción: selección de rutas, envío de comandos LED, gestión de estados y simulador del Pulso Vertical |
 
 ---
 
 ## 🗄️ Modelo de Datos (SQLite)
 
-La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor por primera vez, ejecutando las migraciones DDL contenidas en `src/main/resources/db/init.sql`. El esquema relacional consta de 6 tablas:
+La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor por primera vez, ejecutando las migraciones DDL contenidas en `src/main/resources/db/init.sql`. El esquema relacional consta de 7 tablas:
 
 ### Diagrama Relacional
 
 ```sql
 ┌──────────────────────────┐       ┌──────────────────────────┐
-│       USUARIOS           │       │      CONFIGURACION_LED    │
+│       USUARIOS           │       │      CONFIGURACION_LED   │
 ├──────────────────────────┤       ├──────────────────────────┤
 │ PK correo       TEXT     │       │ PK id           INTEGER  │
 │    nombre       TEXT     │       │    total_leds   INTEGER  │
@@ -85,22 +85,31 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
                 │ N:1
                 ▼
 ┌──────────────────────────┐       ┌──────────────────────────┐
-│         RUTAS            │       │         PRESAS            │
+│         RUTAS            │       │         PRESAS           │
 ├──────────────────────────┤       ├──────────────────────────┤
-│ PK id          INTEGER   │       │ PK id            INTEGER  │
-│    nombre      TEXT      │       │    posicion_x    INTEGER  │
-│    grado       TEXT      │       │    posicion_y    INTEGER  │
-│    equipador   TEXT      │       │ PK indice_led    INTEGER  │ UNIQUE
+│ PK id          INTEGER   │       │ PK id            INTEGER │
+│    nombre      TEXT      │       │    posicion_x    INTEGER │
+│    grado       TEXT      │       │    posicion_y    INTEGER │
+│    equipador   TEXT      │       │ PK indice_led    INTEGER │ UNIQUE
 │    fecha       TIMESTAMP │       └──────────┬───────────────┘
 └──────────┬───────────────┘                  │
            │                                  │ N:1
            │ N:M                              ▼
            └──────────────────►┌──────────────────────────┐
-                               │       RUTA_PRESAS         │
+                               │       RUTA_PRESAS        │
                                ├──────────────────────────┤
                                │ PK,FK ruta_id   INTEGER  │
                                │ PK,FK presa_id  INTEGER  │
                                └──────────────────────────┘
+
+┌──────────────────────────────────────────┐
+│        RANKING_PULSO_VERTICAL            │
+├──────────────────────────────────────────┤
+│ PK id                INTEGER             │
+│    nombre_jugador    TEXT                │
+│    tiempo_segundos   REAL                │
+│    fecha             TIMESTAMP (Default) │
+└──────────────────────────────────────────┘
 ```
 
 ### Descripción de Tablas
@@ -110,9 +119,10 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
 | `CONFIGURACION_LED` | Parámetros físicos de la tira (total de LEDs, pin GPIO, brillo). Registro único por sistema. |
 | `USUARIOS` | Credenciales y datos de los escaladores. La contraseña se almacena como hash SHA-256. Clave primaria: correo electrónico. |
 | `RUTAS` | Catálogo global de vías de escalada creadas por los usuarios (nombre, grado, equipador, fecha de creación). |
-| `PRESAS` | Diccionario de coordenadas del panel physical (X, Y) vinculadas al índice del LED correspondiente. Se pre-cargan 121 registros maestros (grid 11×11). |
+| `PRESAS` | Diccionario de coordenadas del panel physical (X, Y) vinculadas al índice del LED correspondiente. Se pre-cargan 198 registros maestros (grid 18×11). |
 | `RUTA_PRESAS` | Tabla intermedia N:M que asocia cada ruta con la lista de presas/LEDs que la componen. |
 | `HISTORIAL_ENTRENAMIENTO` | Registro de progresión del escalador. Clave primaria compuesta `(usuario_id, ruta_id)` para evitar duplicados. Campo `estado` con constraint CHECK: `proyecto` o `encadenada`. |
+| `RANKING_PULSO_VERTICAL` | Marcas registradas en el minijuego Pulso Vertical: nombre del jugador, tiempo aguantado en segundos (con decimales) y fecha de registro. |
 
 ---
 
@@ -198,7 +208,7 @@ Al ejecutarse por primera vez, el sistema:
 
 1. Creará automáticamente el archivo `rocodromo.db` en el directorio de ejecución
 2. Ejecutará las migraciones DDL desde `db/init.sql` (creación de tablas)
-3. Poblará la tabla `PRESAS` con los 121 registros maestros del grid 11×11 (mapeo LED base 0)
+3. Poblará la tabla `PRESAS` con los 198 registros maestros del grid 18×11 (mapeo LED 1-198)
 4. Arrancará el servidor HTTP en el puerto **8080**
 
 ### Paso 5 — Acceso
@@ -258,25 +268,30 @@ rocodromo-smart/
 ├── rocodromo.db                     # Base de datos SQLite (generada automáticamente)
 └── src/main/
     ├── java/com/rocodromo/
-    │   ├── App.java                 # Punto de entrada — Configuración de Javalin
+    │   ├── App.java                 # Punto de entrada — Configuración de Javalin y rutas
     │   ├── api/
     │   │   ├── HardwareController.java    # Endpoints de control directo de LEDs
+    │   │   ├── JuegoController.java       # Endpoints del minijuego Pulso Vertical y ranking
     │   │   ├── RutaController.java        # CRUD de rutas y selección de vías
     │   │   └── UsuarioController.java     # Registro y autenticación
     │   ├── dao/
     │   │   ├── ConfiguracionLedDAO.java   # Persistencia de parámetros hardware
     │   │   ├── PresaDAO.java              # Mapeo de coordenadas del panel
+    │   │   ├── RankingPulsoVerticalDAO.java # Marcas del ranking del minijuego
     │   │   ├── RutaDAO.java               # Transacciones del catálogo de vías
     │   │   └── UsuarioDAO.java            # Gestión de usuarios + hash SHA-256
     │   ├── db/
     │   │   └── DatabaseConfig.java        # Pool HikariCP + inicialización DDL
     │   ├── hardware/
-    │   │   └── LedService.java            # Bridge Java → Python (ProcessBuilder)
-    │   └── model/
-    │       ├── ConfiguracionLed.java      # Modelo de configuración de hardware
-    │       ├── Presa.java                 # Modelo de presa/LED
-    │       ├── Ruta.java                  # Modelo de ruta de escalada
-    │       └── Usuario.java               # Modelo de usuario
+    │   │   └── LedService.java            # Bridge Java → Python (daemon + ProcessBuilder)
+    │   ├── model/
+    │   │   ├── ConfiguracionLed.java      # Modelo de configuración de hardware
+    │   │   ├── Presa.java                 # Modelo de presa/LED
+    │   │   ├── RankingPulsoVertical.java  # Modelo de marca del ranking
+    │   │   ├── Ruta.java                  # Modelo de ruta de escalada
+    │   │   └── Usuario.java               # Modelo de usuario
+    │   └── service/
+    │       └── JuegoPulsoVerticalService.java # Hilo de fondo del minijuego (secuencia de luces)
     └── resources/
         ├── db/
         │   └── init.sql                   # Migraciones DDL del esquema relacional
@@ -308,12 +323,55 @@ rocodromo-smart/
 | `POST` | `/api/hardware/encender-manual` | Encender LEDs específicos (diagnóstico) |
 | `POST` | `/api/usuarios/registro` | Registrar un nuevo escalador |
 | `POST` | `/api/usuarios/login` | Autenticar escalador |
+| `POST` | `/api/juego/pulso-vertical/iniciar` | Iniciar el minijuego (cuenta atrás de 6 s) |
+| `POST` | `/api/juego/pulso-vertical/pausar` | Pausar el avance del juego |
+| `POST` | `/api/juego/pulso-vertical/reanudar` | Reanudar el juego desde la pausa |
+| `POST` | `/api/juego/pulso-vertical/finalizar` | Finalizar el juego y apagar el panel |
+| `GET` | `/api/juego/pulso-vertical/ranking` | Top 10 del ranking del minijuego |
+| `POST` | `/api/juego/pulso-vertical/ranking` | Guardar una marca (`nombre_jugador`, `tiempo_segundos`) |
 
 ---
+
+## 🎮 Minijuego: Pulso Vertical
+
+Modo de entrenamiento lúdico en tiempo real implementado sobre el panel LED. El objetivo es aguantar en pie el mayor tiempo posible mientras las presas van desapareciendo. Incluye cronómetro, ranking persistente y un **simulador visual** en el frontend que replica la lógica del backend sin necesidad de hardware.
+
+### Flujo de la partida
+
+1. **Cuenta atrás (6 segundos):** el panel se enciende por franjas en **rojo** (filas 1–6 a los 0 s, filas 1–12 a los 2 s y el panel completo a los 4 s).
+2. **Fase verde:** en el segundo 6, los 198 LEDs se encienden en **verde** y comienza el juego de resistencia.
+3. **Reducción progresiva:** cada ciclo de 3 segundos se elimina un **35%** de los LEDs activos (`Math.floor(activos * 0.35)`), con un mínimo de 1 LED por ciclo y un límite de seguridad que **nunca deja el panel con menos de 6 LEDs**.
+4. **Fase naranja (1 segundo):** los LEDs seleccionados para apagarse permanecen 1 segundo en color **naranja** antes de desaparecer, avisando al escalador del cambio.
+5. **Bucle infinito:** con exactamente 6 LEDs (mínimo 2 apoyos por zona: alta, media y baja) se entra en un bucle en el que se apaga 1 LED (previo paso por naranja) y se enciende 1 LED nuevo biomecánicamente válido.
+
+### Restricciones biomecánicas
+
+- **Distancia mínima de 30 cm** entre presas activas simultáneas.
+- **Alcance máximo de 130 cm** entre presas consecutivas alcanzables.
+- **Equilibrio entre zonas:** siempre quedan al menos 2 apoyos en la zona alta (filas 1–6), 2 en la media (filas 7–12) y 2 en la baja (filas 13–18).
+
+### Arquitectura del minijuego
+
+| Componente | Responsabilidad |
+|---|---|
+| `service/JuegoPulsoVerticalService.java` | Hilo en segundo plano (`ScheduledExecutorService`) que gobierna la secuencia de luces: cuenta atrás, fase verde, reducción del 35%, fase naranja y bucle infinito |
+| `api/JuegoController.java` | Endpoints REST de control de partida y gestión del ranking |
+| `dao/RankingPulsoVerticalDAO.java` + `model/RankingPulsoVertical.java` | Persistencia de las marcas en `RANKING_PULSO_VERTICAL` |
+| Pestaña "Pulso Vertical" en `dashboard.html` + `dashboard.js` | Cronómetro, botones de control, ranking y **simulador visual 18×11** que espeja la lógica del servicio en JavaScript |
+| `css/estilos.css` | Estilos del cronómetro, ranking, modal y colores de los LEDs (rojo/verde/naranja) del simulador |
+
+### Soporte de color en el hardware
+
+Para la fase naranja se amplió el protocolo Java ↔ Python:
+
+- `LedService.java` define los colores `COLOR_VERDE` (`00FF96`), `COLOR_ROJO` (`FF0000`) y `COLOR_NARANJA` (`FFA500`).
+- Nuevo método `agregarLedsAlHardware()` que **superpone** LEDs sin limpiar el resto del panel (comando daemon `agregar:`), permitiendo pintar de naranja sobre el verde.
+- `leds.py` acepta el color en formato HEX (`RRGGBB`) como parámetro adicional tanto en el modo CLI como en el daemon, añade el comando `agregar` y el parámetro `limpiar` (para no borrar la escena previa).
 
 ## 📄 Licencia
 
 Copyleft © 2026 — Todos los derechos reservados al desarrollador.
 
 **Autor:** Erin Brandan Vázquez Enes
+
 **Nota:** Esta configuración está orientada a Raspberry Pi OS Bookworm (Debian 12), donde `NetworkManager` sustituye a `dhcpcd` como gestor de red por defecto.

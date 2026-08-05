@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS CONFIGURACION_LED (
     brillo INTEGER NOT NULL
 );
 
+-- 1.b Registro único maestro de configuración (panel de 198 LEDs, GPIO 18, brillo 50)
+INSERT OR REPLACE INTO CONFIGURACION_LED (id, total_leds, pin_gpio, brillo) VALUES (1, 198, 18, 50);
+
 -- 2. Gestión de Usuarios
 CREATE TABLE IF NOT EXISTS USUARIOS (
     correo TEXT PRIMARY KEY,
@@ -54,4 +57,12 @@ CREATE TABLE IF NOT EXISTS HISTORIAL_ENTRENAMIENTO (
     PRIMARY KEY (usuario_id, ruta_id),
     FOREIGN KEY (usuario_id) REFERENCES USUARIOS(correo) ON DELETE CASCADE,
     FOREIGN KEY (ruta_id) REFERENCES RUTAS(id) ON DELETE CASCADE
+);
+
+-- 7. Ranking del minijuego "Pulso Vertical"
+CREATE TABLE IF NOT EXISTS RANKING_PULSO_VERTICAL (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre_jugador TEXT NOT NULL,
+    tiempo_segundos REAL NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

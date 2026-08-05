@@ -23,6 +23,7 @@
         <nav class="navegacion-tabs">
             <button id="tab-entrenar" class="tab-btn activa">💪 Entrenar</button>
             <button id="tab-crear" class="tab-btn">🛠️ Crear Vía</button>
+            <button id="tab-pulso" class="tab-btn">⏱️ Pulso Vertical</button>
         </nav>
 
         <div id="seccion-entrenar" class="contenido-tab activa">
@@ -89,9 +90,60 @@
                 </form>
             </div>
         </div>
+
+        <div id="seccion-pulso" class="contenido-tab">
+            <div id="tarjeta-pulso-inicio" class="tarjeta">
+                <h3>🧗 Pulso Vertical</h3>
+                <p class="subtitulo">Pon a prueba tu agilidad y fuerza de agarre en este desafío de resistencia en tiempo real. ¿Cuánto tiempo lograrás sostenerte antes de caer?</p>
+                <button id="btn-pulso-empezar" class="btn-primario" style="width: 100%;">Atrévete a jugar</button>
+            </div>
+
+            <div id="tarjeta-pulso-juego" class="tarjeta" style="display: none;">
+                <h3>⏱️ Pulso Vertical — En Juego</h3>
+                <ul class="lista-reglas">
+                    <li>Cuenta atrás de 6 segundos con franjas en <span style="color: #ef4444;">rojo</span>.</li>
+                    <li>Al segundo 6 el panel se enciende en <span style="color: var(--color-primario);">verde</span>: ¡aguanta en pie!</li>
+                    <li>Cada pocos segundos desaparecerán presas para obligarte a moverte.</li>
+                    <li>Siempre quedarán 2 apoyos en zona alta, 2 en media y 2 en baja.</li>
+                    <li>Con solo 6 presas el reto se vuelve infinito. ¿Cuánto aguantas?</li>
+                </ul>
+
+                <div id="cronometro-pulso" class="cronometro">00:00.0</div>
+
+                <div class="botonera-vertical">
+                    <button id="btn-pulso-iniciar" class="btn-primario">Iniciar Juego</button>
+                    <button id="btn-pulso-pausar" class="btn btn-secundario" style="display: none;">Pausar</button>
+                    <button id="btn-pulso-finalizar" class="btn btn-peligro">Finalizar Juego</button>
+                </div>
+            </div>
+
+            <div id="tarjeta-pulso-simulador" class="tarjeta">
+                <h3>🧱 Simulador del Panel</h3>
+                <p class="subtitulo">Matriz de presas en tiempo real: franjas <span style="color: #ef4444;">rojas</span> durante la cuenta atrás y LEDs <span style="color: var(--color-primario);">verdes</span> durante el juego.</p>
+                <div id="estado-pulso" class="estado-pulso">⚪ Esperando a que inicies el juego...</div>
+                <div id="matriz-pulso" class="cuadrilla-presas cuadrilla-presas-pulso"></div>
+            </div>
+
+            <div class="tarjeta">
+                <h3>🏆 Ranking de Jugadores</h3>
+                <table id="tabla-ranking" class="tabla-ranking">
+                    <thead>
+                        <tr>
+                            <th>Posición</th>
+                            <th>Escalador</th>
+                            <th>Tiempo</th>
+                            <th>Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="4" class="cargando">Cargando ranking...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </section>
 
-    <section class="panel-visual">
+    <section class="panel-visual" id="panel-visual">
         <div class="tarjeta">
             <h2 id="titulo-matriz">🧱 Matriz de Presas (Simulación)</h2>
             <p id="subtitulo-matriz" class="subtitulo">Las presas activas se iluminarán en el color correspondiente</p>
@@ -123,6 +175,24 @@
 <footer>
     <p>MoonBoard Smart Ecosystem v1.1 — Desarrollado por Erin Brandan Vázquez Enes &copy; 2026</p>
 </footer>
+
+<!-- Modal de guardado de marca del Pulso Vertical -->
+<div id="modal-pulso-marca" class="modal-overlay" style="display: none;">
+    <div class="modal-contenido">
+        <h3>🏁 ¡Juego terminado!</h3>
+        <p class="subtitulo">Tu tiempo: <strong id="modal-pulso-tiempo" class="texto-destacado">00:00.0</strong></p>
+
+        <div class="grupo-input">
+            <label for="input-pulso-nombre">Nombre del jugador</label>
+            <input type="text" id="input-pulso-nombre" maxlength="40" placeholder="Tu nombre" autocomplete="off">
+        </div>
+
+        <div class="botonera">
+            <button id="btn-pulso-guardar" class="btn-primario" style="flex: 2;">Guardar marca</button>
+            <button id="btn-pulso-cerrar" class="btn btn-secundario">Cerrar</button>
+        </div>
+    </div>
+</div>
 
 <script src="/js/dashboard.js"></script>
 </body>

@@ -15,6 +15,7 @@
     margin: 0;
     padding: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    -webkit-tap-highlight-color: transparent; /* Elimina recuadro azul en toque táctil */
 }
 
 body {
@@ -25,31 +26,40 @@ body {
     min-height: 100vh;
 }
 
-/* Cabecera */
+/* Cabecera Responsiva */
 header {
     background-color: var(--bg-tarjeta);
-    padding: 1.5rem;
+    padding: 1rem 1.25rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-bottom: 2px solid var(--borde);
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 header h1 {
-    font-size: 1.8rem;
+    font-size: 1.4rem;
     color: var(--color-primario);
 }
 
 header p {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--texto-mutado);
+}
+
+.controles-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
 .badge {
     padding: 0.4rem 0.8rem;
     border-radius: 20px;
     font-weight: bold;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
 }
 
 .conectado {
@@ -66,17 +76,18 @@ header p {
 .contenedor-principal {
     flex: 1;
     display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 1.5rem;
-    padding: 1.5rem;
+    grid-template-columns: 1fr; /* Móvil por defecto: 1 columna */
+    gap: 1.25rem;
+    padding: 1rem;
     max-width: 1400px;
     margin: 0 auto;
     width: 100%;
 }
 
-@media (max-width: 900px) {
+@media (min-width: 900px) {
     .contenedor-principal {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1.5fr; /* Escritorio: 2 columnas */
+        padding: 1.5rem;
     }
 }
 
@@ -85,32 +96,38 @@ header p {
     background-color: var(--bg-tarjeta);
     border: 1px solid var(--borde);
     border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
 }
 
 .tarjeta h2, .tarjeta h3 {
-    font-size: 1.25rem;
-    margin-bottom: 1rem;
+    font-size: 1.15rem;
+    margin-bottom: 0.85rem;
     border-bottom: 1px solid var(--borde);
     padding-bottom: 0.5rem;
 }
 
 .subtitulo {
     color: var(--texto-mutado);
-    font-size: 0.9rem;
-    margin-bottom: 1.5rem;
+    font-size: 0.85rem;
+    margin-bottom: 1.25rem;
 }
 
-/* Botones Generales */
+/* Botones Generales Optimizado para Dedos */
 .btn {
     flex: 1;
+    min-height: 44px;
     padding: 0.75rem;
     border: none;
     border-radius: 8px;
     font-weight: bold;
+    font-size: 0.95rem;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.btn:active {
+    transform: scale(0.98);
 }
 
 .btn-peligro {
@@ -131,21 +148,26 @@ header p {
     background-color: #374151;
 }
 
-/* Botones específicos de interacción */
 .botonera {
     display: flex;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .btn-primario {
     background-color: var(--color-primario);
     color: var(--bg-principal);
     border: none;
+    min-height: 46px;
     padding: 0.75rem;
     border-radius: 8px;
     font-weight: bold;
+    font-size: 1rem;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.btn-primario:active {
+    transform: scale(0.98);
 }
 
 .btn-primario:hover {
@@ -156,11 +178,12 @@ header p {
     background: none;
     border: 1px solid var(--borde);
     color: var(--texto-mutado);
-    padding: 0.5rem 1rem;
+    padding: 0.4rem 0.8rem;
+    min-height: 38px;
     border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     transition: all 0.2s;
 }
 
@@ -175,16 +198,15 @@ header p {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    max-height: 400px;
+    max-height: 320px;
     overflow-y: auto;
 }
 
-/* Preparación de la tarjeta para botones absolutos a la derecha */
 .item-ruta {
     background-color: var(--bg-principal);
     border: 1px solid var(--borde);
-    padding: 1rem;
-    padding-right: 3.5rem !important; /* Reservamos espacio para la papelera o el botón más */
+    padding: 0.85rem;
+    padding-right: 3.5rem !important;
     border-radius: 8px;
     display: flex;
     justify-content: space-between;
@@ -196,11 +218,11 @@ header p {
 
 .item-ruta:hover {
     border-color: var(--color-primario);
-    transform: translateX(4px);
 }
 
 .info-ruta h4 {
     color: white;
+    font-size: 0.95rem;
 }
 
 .info-ruta p {
@@ -213,27 +235,29 @@ header p {
     padding: 0.25rem 0.6rem;
     border-radius: 6px;
     font-weight: bold;
+    font-size: 0.85rem;
     color: var(--color-primario);
 }
 
+/* Matriz Fluidas y Adaptable a Móvil */
 .cuadrilla-presas {
     display: grid;
-    grid-template-columns: 0.5fr repeat(6, 1fr);
-    gap: 0.75rem; /* Aumentamos el hueco entre celdas */
+    grid-template-columns: 0.5fr repeat(11, 1fr);
+    gap: 0.35rem;
     background-color: var(--bg-principal);
-    padding: 1.25rem;
+    padding: 0.75rem;
     border-radius: 8px;
     aspect-ratio: 9 / 19;
-    max-width: 550px; /* Subimos de 450px a 550px para dar espacio al nuevo tamaño */
+    width: 100%;
+    max-width: 480px;
     margin: 0 auto;
 }
 
-/* Etiquetas de coordenadas (Letras y Números) */
 .eje-coordenada {
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     font-weight: bold;
     color: var(--color-primario);
     opacity: 0.8;
@@ -241,46 +265,43 @@ header p {
 
 .nodo-presa {
     background-color: #2d3748;
-    /* Escalamos las dimensiones para que sean regletas más grandes */
-    width: 52px; /* Subimos de 38px a 52px para estirarlas más */
-    height: 32px; /* Subimos de 22px a 32px para darles cuerpo vertical */
-    border-radius: 6px; /* Un pelín más de curvatura en las esquinas */
+    width: 100%;
+    height: auto;
+    max-height: 38px;
+    min-height: 24px;
+    border-radius: 4px;
     margin: 0 auto;
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 0.8rem; /* Subimos un pelín el texto para que se lea mejor el ID */
+    font-size: 0.75rem;
     color: var(--texto-mutado);
     font-weight: bold;
     cursor: pointer;
-    transition: background-color 0.3s, box-shadow 0.3s, transform 0.1s;
+    transition: background-color 0.2s, box-shadow 0.2s, transform 0.1s;
 }
 
-.nodo-presa:hover {
-    transform: scale(1.05);
+.nodo-presa:active {
+    transform: scale(0.92);
 }
 
 .nodo-presa.activo {
     background-color: var(--color-primario);
     color: #121824;
-    box-shadow: 0 0 12px var(--color-primario);
+    box-shadow: 0 0 10px var(--color-primario);
 }
 
 /* Pie de página */
 footer {
     text-align: center;
     padding: 1rem;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--texto-mutado);
     border-top: 1px solid var(--borde);
     margin-top: auto;
 }
 
-/* ==========================================================================
-
-SECCIÓN: SEPARACIÓN Y CENTRADO PARA LOGIN / REGISTRO
-
-========================================================================== */
+/* LOGIN / REGISTRO RESPONSIVO */
 .contenedor-auth {
     display: flex;
     justify-content: center;
@@ -294,7 +315,7 @@ SECCIÓN: SEPARACIÓN Y CENTRADO PARA LOGIN / REGISTRO
     background-color: var(--bg-tarjeta);
     border: 1px solid var(--borde);
     border-radius: 12px;
-    padding: 2.5rem;
+    padding: 1.5rem;
     width: 100%;
     max-width: 420px;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
@@ -302,44 +323,44 @@ SECCIÓN: SEPARACIÓN Y CENTRADO PARA LOGIN / REGISTRO
 
 .auth-cabecera {
     text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
 }
 
 .auth-cabecera h1 {
     color: var(--color-primario);
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+    font-size: 1.6rem;
+    margin-bottom: 0.4rem;
 }
 
 .auth-cabecera p {
     color: var(--texto-mutado);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
 }
 
 .formulario-auth {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1rem;
 }
 
 .grupo-input {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
 }
 
 .grupo-input label {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--texto-mutado);
     font-weight: 600;
 }
 
-/* Cajas de entrada oscuras */
 .grupo-input input, .grupo-input select {
     background-color: var(--bg-principal);
     border: 1px solid var(--borde);
     color: var(--texto-claro);
     padding: 0.75rem 1rem;
+    min-height: 48px; /* Target táctil óptimo */
     border-radius: 8px;
     font-size: 1rem;
     width: 100%;
@@ -373,15 +394,7 @@ SECCIÓN: SEPARACIÓN Y CENTRADO PARA LOGIN / REGISTRO
     font-weight: bold;
 }
 
-.cambio-auth a:hover {
-    text-decoration: underline;
-}
-
-/* ==========================================================================
-
-SISTEMA DE PESTAÑAS (TABS) PARA EL DASHBOARD
-
-========================================================================== */
+/* SISTEMA DE PESTAÑAS (TABS) */
 .navegacion-tabs {
     display: flex;
     gap: 0.5rem;
@@ -391,20 +404,18 @@ SISTEMA DE PESTAÑAS (TABS) PARA EL DASHBOARD
 }
 
 .tab-btn {
+    flex: 1;
     background: transparent;
     border: none;
     color: var(--texto-mutado);
-    padding: 0.6rem 1.2rem;
-    font-size: 1rem;
+    padding: 0.65rem;
+    min-height: 44px;
+    font-size: 0.95rem;
     font-weight: bold;
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.3s ease;
-}
-
-.tab-btn:hover {
-    color: var(--texto-claro);
-    background-color: rgba(255, 255, 255, 0.05);
+    text-align: center;
 }
 
 .tab-btn.activa {
@@ -421,11 +432,7 @@ SISTEMA DE PESTAÑAS (TABS) PARA EL DASHBOARD
     display: block;
 }
 
-/* ==========================================================================
-
-FILTROS DE CATÁLOGO (PROYECTOS / ENCADENADAS / COMUNIDAD)
-
-========================================================================== */
+/* FILTROS DE CATÁLOGO RESPONSIVOS */
 .cabecera-catalogo {
     display: flex;
     flex-direction: column;
@@ -435,36 +442,28 @@ FILTROS DE CATÁLOGO (PROYECTOS / ENCADENADAS / COMUNIDAD)
     padding-bottom: 0.8rem;
 }
 
-@media (min-width: 768px) {
-    .cabecera-catalogo {
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-    }
-}
-
 .filtros-estado {
     display: flex;
     background-color: var(--bg-principal);
     padding: 0.25rem;
     border-radius: 6px;
     gap: 0.2rem;
+    width: 100%;
 }
 
 .btn-filtro {
+    flex: 1;
     background: transparent;
     border: none;
     color: var(--texto-mutado);
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
+    padding: 0.5rem;
+    min-height: 38px;
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.2s ease;
-}
-
-.btn-filtro:hover {
-    color: var(--texto-claro);
+    text-align: center;
 }
 
 .btn-filtro.activo {
@@ -472,55 +471,37 @@ FILTROS DE CATÁLOGO (PROYECTOS / ENCADENADAS / COMUNIDAD)
     color: var(--color-primario);
 }
 
-/* Acciones absolutas del catálogo de rutas (Papelera y Botón Añadir) */
+/* ACCIONES DE BOTONES EN RUTAS */
 .btn-borrar-via, .btn-agregar-comunidad {
     position: absolute;
-    right: 10px;
+    right: 8px;
     top: 50%;
     transform: translateY(-50%);
     background: transparent;
     border: none;
     font-size: 1.1rem;
     cursor: pointer;
-    padding: 0.4rem;
+    padding: 0.5rem;
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    min-width: 40px;
+    min-height: 40px;
 }
 
-/* Comportamiento específico de la papelera */
 .btn-borrar-via {
-    opacity: 0.6;
+    opacity: 0.7;
 }
 
-.btn-borrar-via:hover {
-    background-color: rgba(231, 76, 60, 0.2);
-    opacity: 1;
-}
-
-/* 🔥 Comportamiento del botón verde de Comunidad */
 .btn-agregar-comunidad {
-    background-color: #00cc99; /* Alineado al verde de tus badges de dificultad */
-    font-size: 0.9rem;
-    padding: 0.35rem 0.5rem;
+    background-color: #00cc99;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+    color: #121824;
 }
 
-.btn-agregar-comunidad:hover {
-    background-color: #00b386;
-    box-shadow: 0 0 8px rgba(0, 204, 153, 0.4);
-}
-
-.btn-agregar-comunidad:active {
-    transform: translateY(-50%) scale(0.92); /* Respeta el centrado vertical al pulsar */
-}
-
-/* ==========================================================================
-
-MODO CONSTRUCTOR (MOONBOARD BUILDER)
-
-========================================================================== */
+/* MODO CONSTRUCTOR (BUILDER) */
 .botonera-vertical {
     display: flex;
     flex-direction: column;
@@ -536,14 +517,15 @@ MODO CONSTRUCTOR (MOONBOARD BUILDER)
     font-weight: bold;
     border: 1px dashed rgba(255, 255, 255, 0.2);
     color: var(--texto-mutado);
+    font-size: 0.9rem;
 }
 
 .nodo-presa.creando-activa {
     background: radial-gradient(circle, #3498db 30%, #2980b9 100%);
     color: #fff;
-    box-shadow: 0 0 15px rgba(52, 152, 219, 0.8);
+    box-shadow: 0 0 12px rgba(52, 152, 219, 0.8);
     border-color: #5dade2;
-    transform: scale(1.08);
+    transform: scale(1.05);
 }
 
 .btn-primario:disabled {
@@ -552,33 +534,190 @@ MODO CONSTRUCTOR (MOONBOARD BUILDER)
     cursor: not-allowed;
     box-shadow: none;
 }
-/* ==========================================================================
-   NUEVOS ESTADOS DE PRESAS (LOGICA DE VIA)
-   ========================================================================== */
 
-/* 1. Presas de inicio o pies obligatorios (Verde Moonboard) */
+/* ESTADOS DE PRESAS */
 .nodo-presa.presa-inicio {
     background-color: var(--color-primario) !important;
     color: #121824 !important;
     font-weight: 900;
-    box-shadow: 0 0 15px var(--color-primario);
-    border: 2px solid #ffffff !important; /* Un borde blanco para distinguirla como inicio */
+    box-shadow: 0 0 12px var(--color-primario);
+    border: 2px solid #ffffff !important;
 }
 
-/* 2. Presas intermedias o normales de la vía (Tu Azul actual) */
 .nodo-presa.presa-intermedia {
     background: radial-gradient(circle, #3498db 30%, #2980b9 100%) !important;
     color: #fff !important;
-    box-shadow: 0 0 15px rgba(52, 152, 219, 0.8);
+    box-shadow: 0 0 12px rgba(52, 152, 219, 0.8);
     border-color: #5dade2 !important;
 }
 
-/* 3. Presa final / TOP de la vía (Amarillo del Logo) */
 .nodo-presa.presa-top {
-    background-color: #f6eba6 !important; /* El amarillo de las gafas */
+    background-color: #f6eba6 !important;
     color: #121824 !important;
     font-weight: 900;
-    box-shadow: 0 0 20px #f6eba6;
-    border: 2px dashed #000000 !important; /* Un ribete discontinuo muy pro */
-    transform: scale(1.08);
+    box-shadow: 0 0 15px #f6eba6;
+    border: 2px dashed #000000 !important;
+    transform: scale(1.05);
+}
+
+/* ============================================================= */
+/* MINIJUEGO "PULSO VERTICAL"                                      */
+/* ============================================================= */
+
+.cronometro {
+    font-family: "Consolas", "Menlo", monospace;
+    font-size: 2.4rem;
+    font-weight: 900;
+    text-align: center;
+    color: var(--color-primario);
+    background-color: var(--bg-principal);
+    border: 2px solid var(--borde);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 0.75rem 0 1.25rem;
+    letter-spacing: 2px;
+}
+
+/* Simulador del panel en el apartado Pulso Vertical */
+.cuadrilla-presas-pulso {
+    aspect-ratio: 9 / 19;
+    max-width: 460px;
+}
+
+.estado-pulso {
+    text-align: center;
+    font-weight: bold;
+    color: var(--texto-mutado);
+    background-color: var(--bg-principal);
+    border: 1px solid var(--borde);
+    border-radius: 8px;
+    padding: 0.6rem;
+    margin-bottom: 0.85rem;
+}
+
+.estado-pulso.en-juego {
+    color: var(--color-primario);
+    border-color: var(--color-primario);
+    box-shadow: 0 0 12px rgba(0, 255, 150, 0.25);
+}
+
+.nodo-presa.rojo {
+    background-color: #ef4444;
+    color: #121824;
+    box-shadow: 0 0 10px #ef4444;
+}
+
+.nodo-presa.naranja {
+    background-color: #ffa500;
+    color: #121824;
+    box-shadow: 0 0 10px #ffa500;
+    animation: parpadeo-naranja 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes parpadeo-naranja {
+    from { opacity: 1; }
+    to { opacity: 0.55; }
+}
+
+.lista-reglas {
+    margin: 0 0 0.75rem;
+    padding-left: 1.25rem;
+    color: var(--texto-mutado);
+    font-size: 0.9rem;
+    line-height: 1.7;
+}
+
+.lista-reglas li {
+    margin-bottom: 0.35rem;
+}
+
+.texto-destacado {
+    color: var(--color-primario);
+    font-size: 1.3rem;
+}
+
+.tabla-ranking {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.tabla-ranking th,
+.tabla-ranking td {
+    text-align: left;
+    padding: 0.65rem 0.5rem;
+    border-bottom: 1px solid var(--borde);
+}
+
+.tabla-ranking th {
+    color: var(--texto-mutado);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tabla-ranking .cargando {
+    text-align: center;
+    color: var(--texto-mutado);
+    padding: 1.25rem;
+}
+
+/* Modal de guardado de marca */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background-color: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+}
+
+.modal-contenido {
+    width: 100%;
+    max-width: 380px;
+    background-color: var(--bg-tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 14px;
+    padding: 1.5rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal-contenido h3 {
+    font-size: 1.15rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--borde);
+    padding-bottom: 0.5rem;
+}
+
+/* Medias queries para escritorios (Ajustes finos) */
+@media (min-width: 768px) {
+    header h1 {
+        font-size: 1.8rem;
+    }
+
+    .cabecera-catalogo {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .filtros-estado {
+        width: auto;
+    }
+
+    .btn-filtro {
+        flex: initial;
+    }
+
+    .cuadrilla-presas {
+        gap: 0.55rem;
+        padding: 1.25rem;
+    }
+
+    .nodo-presa {
+        max-height: 42px;
+        font-size: 0.8rem;
+    }
 }
