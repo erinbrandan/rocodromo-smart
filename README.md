@@ -432,7 +432,7 @@ El color por LED es una capacidad transversal, no exclusiva del minijuego. La co
 - `LedService.java` define los colores de estado del panel: `COLOR_VERDE` (`00FF00`), `COLOR_ROJO` (`FF0000`) y `COLOR_NARANJA` (`FFA500`). Los roles de presa tienen su propia paleta en `PresaRuta.java`.
 - El método `agregarLedsAlHardware()` **superpone** LEDs sin limpiar el resto del panel (comando daemon `agregar:`). Es lo que permite pintar de naranja sobre el verde en la fase de aviso del minijuego, y lo que permite a una vía multicolormandarse en varios viajes sin apagarse entre grupos.
 - `leds.py` acepta el color en formato HEX (`RRGGBB`) como parámetro adicional tanto en el modo CLI como en el daemon, añade el comando `agregar` y el parámetro `limpiar` (para no borrar la escena previa).
-
+ 
 > **Percepción del color:** el brillo del panel es un único valor (`CONFIGURACION_LED.brillo`) que se aplica por igual a los tres canales. En los WS2812B el verde tiene bastante más eficacia lumínica que el azul, así que ambos no se ven igual de intensos con el mismo brillo. Para igualarlos habría que aplicar una ganancia por canal antes de enviar el color al bus.
 
 ## 📄 Licencia
