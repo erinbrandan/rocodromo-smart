@@ -37,6 +37,18 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Python ###
+# leds.py se ejecuta en la RPi, pero el .pyc cacheado es un artefacto local
+# que no debe viajar al repositorio.
+__pycache__/
+*.py[cod]
+
 ### SQLite (Base de datos local del Rocódromo) ###
+# La base de datos se genera sola en el primer arranque. Ojo: '*.db' NO cubre
+# los ficheros auxiliares del WAL, que usan los sufijos -wal y -shm.
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
 rocodromo.db
