@@ -435,7 +435,7 @@ El color por LED es una capacidad transversal, no exclusiva del minijuego. La co
  
 > **Percepción del color:** el brillo del panel es un único valor (`CONFIGURACION_LED.brillo`) que se aplica por igual a los tres canales. En los WS2812B el verde tiene bastante más eficacia lumínica que el azul, así que ambos no se ven igual de intensos con el mismo brillo. Para igualarlos habría que aplicar una ganancia por canal antes de enviar el color al bus.
 
-## 📄 Licencia
+## 📄 Licencia 
 
 Copyleft © 2026 — Todos los derechos reservados al desarrollador.
 
