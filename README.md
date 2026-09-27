@@ -107,7 +107,7 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
 └──────────┬───────────────┘                  │
            │                                  │ N:1
            │ N:M                              ▼
-           └──────────────────►                               ┌──────────────────────────┐
+           └──────────────────►┌──────────────────────────┐
                                │       RUTA_PRESAS        │
                                ├──────────────────────────┤
                                │ PK,FK ruta_id   INTEGER  │
