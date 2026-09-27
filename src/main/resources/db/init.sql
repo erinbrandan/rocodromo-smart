@@ -39,9 +39,12 @@ CREATE TABLE IF NOT EXISTS PRESAS (
 
 -- 5. Tabla Intermedia: Relación de LEDs por Ruta
 -- CORRECCIÓN: Apuntamos directamente a 'indice_led' para que coincida con el array del Frontend
+-- NOTA: La columna 'tipo' define el papel de la presa en la vía (inicio / intermedia / top).
+-- Las bases de datos ya creadas se actualizan con la migración de DatabaseConfig.
 CREATE TABLE IF NOT EXISTS RUTA_PRESAS (
     ruta_id INTEGER,
     presa_id INTEGER,
+    tipo TEXT NOT NULL DEFAULT 'intermedia' CHECK(tipo IN ('intermedia', 'inicio', 'top')),
     PRIMARY KEY (ruta_id, presa_id),
     FOREIGN KEY (ruta_id) REFERENCES RUTAS(id) ON DELETE CASCADE,
     FOREIGN KEY (presa_id) REFERENCES PRESAS(indice_led) ON DELETE CASCADE

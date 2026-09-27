@@ -5,8 +5,10 @@
 package com.rocodromo.api;
 
 import com.rocodromo.dao.RutaDAO;
+import com.rocodromo.model.PresaRuta;
 import com.rocodromo.model.Ruta;
 import io.javalin.http.Context;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +49,10 @@ public class RutaController {
     /**
      * Recibe la definición de una vía en JSON, la persiste en el sistema
      * y la vincula al historial del creador. POST /api/rutas/crear
+     *
+     * Acepta el payload moderno con roles ('presas': [{led, tipo}]) y, por
+     * compatibilidad con clientes antiguos, el clásico 'leds': [1, 2, 3] en
+     * el que todas las presas se registran como intermedias.
      */
     public static void guardarRuta(Context ctx) {
         System.out.println("📬 [API] Recibiendo payload para registrar nueva vía en caliente...");
@@ -54,14 +60,16 @@ public class RutaController {
         try {
             CrearRutaDTO dto = ctx.bodyAsClass(CrearRutaDTO.class);
 
-            // Se validan campos obligatorios y que la lista de LEDs no esté vacía
+            List<PresaRuta> presas = traducirPresas(dto);
+
+            // Se validan campos obligatorios y que la lista de presas no esté vacía
             if (dto.nombre == null || dto.nombre.isBlank() ||
                     dto.grado == null || dto.grado.isBlank() ||
                     dto.usuario_correo == null || dto.usuario_correo.isBlank() ||
-                    dto.leds == null || dto.leds.isEmpty()) {
+                    presas.isEmpty()) {
 
                 ctx.status(400);
-                ctx.json(Map.of("status", "error", "message", "Datos de creación insuficientes o mapa de LEDs vacío."));
+                ctx.json(Map.of("status", "error", "message", "Datos de creación insuficientes o mapa de presas vacío."));
                 return;
             }
 
@@ -70,7 +78,7 @@ public class RutaController {
             nuevaRuta.setGrado(dto.grado.trim());
             nuevaRuta.setEquipador(dto.equipador != null && !dto.equipador.isBlank() ? dto.equipador.trim() : "Anónimo");
 
-            boolean exito = rutaDAO.guardarRuta(nuevaRuta, dto.leds, dto.usuario_correo.trim());
+            boolean exito = rutaDAO.guardarRuta(nuevaRuta, presas, dto.usuario_correo.trim());
 
             if (exito) {
                 ctx.status(201);
@@ -87,8 +95,32 @@ public class RutaController {
     }
 
     /**
-     * Selecciona una ruta por ID, obtiene sus LEDs asociados, activa el hardware
-     * y retorna la lista de LEDs para actualizar el simulador web.
+     * Convierte el cuerpo de la petición en la lista definitiva de presas con rol,
+     * priorizando el payload con roles y usando el plano como plan B.
+     */
+    private static List<PresaRuta> traducirPresas(CrearRutaDTO dto) {
+        List<PresaRuta> presas = new ArrayList<>();
+
+        if (dto.presas != null) {
+            for (PresaDTO presa : dto.presas) {
+                if (presa == null || presa.led == null) continue;
+                presas.add(new PresaRuta(presa.led, presa.tipo));
+            }
+        }
+
+        if (presas.isEmpty() && dto.leds != null) {
+            for (Integer led : dto.leds) {
+                if (led == null) continue;
+                presas.add(new PresaRuta(led, PresaRuta.TIPO_INTERMEDIA));
+            }
+        }
+
+        return presas;
+    }
+
+    /**
+     * Selecciona una ruta por ID, obtiene sus presas asociadas con su rol,
+     * activa el hardware multicolor y retorna la lista para el simulador web.
      * POST /api/rutas/{id}/seleccionar
      */
     public static void seleccionarRuta(Context ctx) {
@@ -96,29 +128,36 @@ public class RutaController {
             int rutaId = Integer.parseInt(ctx.pathParam("id"));
             System.out.println("📬 [API] Escalador ha seleccionado la ruta con ID: " + rutaId);
 
-            List<Integer> ledsAEncender = rutaDAO.obtenerLedsDeRuta(rutaId);
+            List<PresaRuta> presas = rutaDAO.obtenerPresasDeRuta(rutaId);
 
-            if (ledsAEncender.isEmpty()) {
+            if (presas.isEmpty()) {
                 ctx.status(404);
                 ctx.json(Map.of("status", "error", "message", "La ruta no contiene presas o no existe."));
                 return;
             }
 
-            boolean exitoHardware = HardwareController.encenderRutaInterna(ledsAEncender);
+            boolean exitoHardware = HardwareController.encenderPresasInterna(presas);
+
+            List<Integer> indicesLeds = new ArrayList<>();
+            for (PresaRuta presa : presas) {
+                indicesLeds.add(presa.getIndiceLed());
+            }
 
             if (exitoHardware) {
                 ctx.status(200);
                 ctx.json(Map.of(
                         "status", "success",
                         "message", "Ruta cargada en el panel.",
-                        "leds", ledsAEncender
+                        "leds", indicesLeds,
+                        "presas", presas
                 ));
             } else {
                 ctx.status(502);
                 ctx.json(Map.of(
                         "status", "error",
                         "message", "El hardware no pudo iluminar la ruta. Verifica leds.py y el bus GPIO.",
-                        "leds", ledsAEncender
+                        "leds", indicesLeds,
+                        "presas", presas
                 ));
             }
 
@@ -165,7 +204,8 @@ public class RutaController {
     }
 
     /**
-     * Elimina la vinculación de una ruta con el historial del usuario.
+     * Elimina una vía de escalada de todo el sistema: desaparece de la lista
+     * del usuario y también del catálogo de la Comunidad.
      * DELETE /api/rutas/{id}?usuario=correo@ejemplo.com
      */
     public static void eliminarRuta(Context ctx) {
@@ -185,7 +225,7 @@ public class RutaController {
 
             if (borrado) {
                 ctx.status(200);
-                ctx.json(Map.of("status", "success", "message", "Vía removida correctamente de tu catálogo."));
+                ctx.json(Map.of("status", "success", "message", "Vía eliminada de tu catálogo y del catálogo de la Comunidad."));
             } else {
                 ctx.status(404);
                 ctx.json(Map.of("status", "error", "message", "La vía no formaba parte de tu catálogo o no existe."));
@@ -239,7 +279,14 @@ public class RutaController {
         public String grado;
         public String equipador;
         public String usuario_correo; // Nombre del campo esperado por el cliente (snake_case)
-        public List<Integer> leds;
+        public List<PresaDTO> presas;  // Payload moderno con el rol de cada presa
+        public List<Integer> leds;     // Payload clásico sin roles (compatibilidad)
+    }
+
+    /** DTO de una presa dentro del payload de creación */
+    private static class PresaDTO {
+        public Integer led;
+        public String tipo; // "intermedia", "inicio" o "top"
     }
 
     /** DTO para la petición de cambio de estado */

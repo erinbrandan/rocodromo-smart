@@ -5,6 +5,7 @@
 package com.rocodromo.dao;
 
 import com.rocodromo.db.DatabaseConfig;
+import com.rocodromo.model.PresaRuta;
 import com.rocodromo.model.Ruta;
 
 import java.sql.*;
@@ -17,18 +18,18 @@ import java.util.List;
  * RUTAS, RUTA_PRESAS, PRESAS e HISTORIAL_ENTRENAMIENTO.
  *
  * @author Erin Brandan Vazquez Enes
- * @version 1.4
+ * @version 1.5
  */
 public class RutaDAO {
 
     /**
      * Inserta una nueva ruta de escalada, asocia sus presas en la tabla intermedia
-     * y la vincula al historial del escalador en estado 'proyecto'. Todo bajo
-     * una transacción atómica (ACID).
+     * (guardando el rol de cada una) y la vincula al historial del escalador en
+     * estado 'proyecto'. Todo bajo una transacción atómica (ACID).
      */
-    public boolean guardarRuta(Ruta ruta, List<Integer> idsPresas, String correoUsuario) {
+    public boolean guardarRuta(Ruta ruta, List<PresaRuta> presas, String correoUsuario) {
         String sqlRuta = "INSERT INTO RUTAS (nombre, grado, equipador) VALUES (?, ?, ?)";
-        String sqlRelacion = "INSERT INTO RUTA_PRESAS (ruta_id, presa_id) VALUES (?, ?)";
+        String sqlRelacion = "INSERT INTO RUTA_PRESAS (ruta_id, presa_id, tipo) VALUES (?, ?, ?)";
         String sqlHistorial = "INSERT INTO HISTORIAL_ENTRENAMIENTO (usuario_id, ruta_id, estado, fecha) VALUES (?, ?, 'proyecto', CURRENT_TIMESTAMP)";
 
         Connection conn = null;
@@ -54,9 +55,10 @@ public class RutaDAO {
             }
 
             try (PreparedStatement pstmtRelacion = conn.prepareStatement(sqlRelacion)) {
-                for (int presaId : idsPresas) {
+                for (PresaRuta presa : presas) {
                     pstmtRelacion.setInt(1, rutaId);
-                    pstmtRelacion.setInt(2, presaId);
+                    pstmtRelacion.setInt(2, presa.getIndiceLed());
+                    pstmtRelacion.setString(3, presa.getTipo());
                     pstmtRelacion.addBatch();
                 }
                 pstmtRelacion.executeBatch();
@@ -127,10 +129,25 @@ public class RutaDAO {
     }
 
     /**
-     * Elimina la vinculación de una ruta con el historial de entrenamiento del usuario.
+     * Elimina una vía de escalada de todo el sistema, no solo de la lista del
+     * usuario que la borra.
+     * <p>
+     * Se borra la fila de RUTAS y SQLite arrastra en cascada todo lo que
+     * dependía de ella: sus RUTA_PRESAS (el diseño de iluminación) y TODOS sus
+     * HISTORIAL_ENTRENAMIENTO. Gracias a esto la vía desaparece a la vez del
+     * catálogo de la Comunidad y de la lista de cualquier otro escalador que la
+     * tuviera adoptada. Las presas maestras de PRESAS no se tocan.
+     * <p>
+     * El EXISTS actúa como control de autorización: solo se borra si la vía
+     * estaba realmente en la lista del usuario solicitante, de modo que
+     * conocer un ID ajeno no basta para eliminarla.
+     *
+     * @return true si la vía existía y estaba en la lista del usuario.
      */
     public boolean eliminarRutaDeUsuario(int rutaId, String correoUsuario) {
-        String sql = "DELETE FROM HISTORIAL_ENTRENAMIENTO WHERE ruta_id = ? AND usuario_id = ?";
+        String sql = "DELETE FROM RUTAS WHERE id = ? "
+                + "AND EXISTS (SELECT 1 FROM HISTORIAL_ENTRENAMIENTO "
+                + "WHERE ruta_id = RUTAS.id AND usuario_id = ?)";
 
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -141,7 +158,7 @@ public class RutaDAO {
             return pstmt.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            System.err.println("❌ [RutaDAO.eliminarRutaDeUsuario] Error al eliminar ruta del historial: " + e.getMessage());
+            System.err.println("❌ [RutaDAO.eliminarRutaDeUsuario] Error al eliminar la vía: " + e.getMessage());
             return false;
         }
     }
@@ -151,9 +168,21 @@ public class RutaDAO {
      */
     public List<Integer> obtenerLedsDeRuta(int rutaId) {
         List<Integer> indicesLeds = new ArrayList<>();
-        String sql = "SELECT P.indice_led FROM RUTA_PRESAS RP " +
+        for (PresaRuta presa : obtenerPresasDeRuta(rutaId)) {
+            indicesLeds.add(presa.getIndiceLed());
+        }
+        return indicesLeds;
+    }
+
+    /**
+     * Obtiene las presas de una ruta con su rol asociado (inicio, intermedia o top),
+     * que el frontend y el hardware necesitan para reproducir el diseño multicolor.
+     */
+    public List<PresaRuta> obtenerPresasDeRuta(int rutaId) {
+        List<PresaRuta> presas = new ArrayList<>();
+        String sql = "SELECT P.indice_led, RP.tipo FROM RUTA_PRESAS RP " +
                 "INNER JOIN PRESAS P ON RP.presa_id = P.indice_led " +
-                "WHERE RP.ruta_id = ?";
+                "WHERE RP.ruta_id = ? ORDER BY P.indice_led";
 
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -161,14 +190,14 @@ public class RutaDAO {
             pstmt.setInt(1, rutaId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    indicesLeds.add(rs.getInt("indice_led"));
+                    presas.add(new PresaRuta(rs.getInt("indice_led"), rs.getString("tipo")));
                 }
             }
 
         } catch (SQLException e) {
-            System.err.println("❌ [RutaDAO.obtenerLedsDeRuta] Error al extraer los LEDs de la ruta: " + e.getMessage());
+            System.err.println("❌ [RutaDAO.obtenerPresasDeRuta] Error al extraer las presas de la ruta: " + e.getMessage());
         }
-        return indicesLeds;
+        return presas;
     }
 
     /**

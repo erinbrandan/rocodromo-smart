@@ -39,7 +39,7 @@ public class LedService {
     private static final String PROP_SCRIPT_PATH = "rocodromo.script.path";
 
     // Colores del panel (formato HEX RRGGBB)
-    public static final String COLOR_VERDE = "00FF96";
+    public static final String COLOR_VERDE = "00FF00";
     public static final String COLOR_ROJO = "FF0000";
     public static final String COLOR_NARANJA = "FFA500";
 

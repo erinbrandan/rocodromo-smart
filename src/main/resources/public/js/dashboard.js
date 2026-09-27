@@ -15,8 +15,25 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- VARIABLES DE ESTADO LOCAL FRONTEND ---
     let modoActual = "entrenar";       // "entrenar", "crear" o "pulso"
     let filtroEstado = "proyecto";     // "proyecto", "encadenada" o "comunidad"
-    let ledsSeleccionadosCreacion = []; // Guarda los LEDs que pulsemos en modo Builder
     let rutaSeleccionadaId = null;     // Guarda la ID de la ruta activa en el panel
+
+    // Caché del catálogo comunitario completo. Los filtros de nombre y grado se
+    // aplican en memoria sobre esta copia, así que escribir en el buscador no
+    // vuelve a golpear la API.
+    let catalogoComunidad = [];
+
+    // Escala de grados ordenada de menor a mayor dificultad. El desplegable
+    // filtra por grado MÍNIMO: elegir 6a muestra 6a, 6a+, 6b, 6b+ y todo lo
+    // más difícil. Es la misma escala que ofrece el formulario de creación.
+    const ESCALA_GRADOS = ["5a", "5a+", "5b", "5b+", "5c", "5c+", "6a", "6a+", "6b", "6b+",
+                           "6c", "6c+", "7a", "7a+", "7b", "7b+", "7c", "7c+", "8a", "8a+",
+                           "8b", "8b+", "8c"];
+
+    // Diseño en construcción: id de LED -> rol de la presa.
+    // Un Map evita duplicados y garantiza que cada presa tiene un único rol.
+    let rolesPorPresa = new Map();
+    let temporizadorPulsacion = null;  // Long press para deseleccionar una presa
+    let instantePulsacionLarga = 0;    // Momento del último long press (guardia anticlic)
 
     // Estado del minijuego Pulso Vertical
     let cronoPulsoIntervalo = null;    // Intervalo del cronómetro
@@ -54,6 +71,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const filtroEncadenadas = document.getElementById("filtro-encadenadas");
     const filtroComunidad = document.getElementById("filtro-comunidad");
 
+    // Filtros avanzados del catálogo comunitario (nombre + grado mínimo)
+    const contFiltrosComunidad = document.getElementById("filtros-comunidad");
+    const inputBuscarComunidad = document.getElementById("buscar-nombre-comunidad");
+    const selectGradoComunidad = document.getElementById("filtrar-grado-comunidad");
+
     // Botón de Acción Especial de Encadenar
     const contenedorAccionVia = document.getElementById("contenedor-accion-via");
     const btnCompletarVia = document.getElementById("btn-completar-via");
@@ -63,6 +85,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const txtNombreVia = document.getElementById("crear-nombre");
     const selGradoVia = document.getElementById("crear-grado");
     const contadorPresasBadge = document.getElementById("contador-presas");
+    const contadorInicioBadge = document.getElementById("contador-inicio");
+    const contadorIntermediaBadge = document.getElementById("contador-intermedia");
+    const contadorTopBadge = document.getElementById("contador-top");
     const btnGuardarVia = document.getElementById("btn-guardar-via");
     const btnLimpiarCreador = document.getElementById("btn-limpiar-creador");
 
@@ -106,6 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- LÓGICA DE CAMBIO DE PESTAÑAS PRINCIPALES (TABS) ---
     tabEntrenar.addEventListener("click", () => {
         modoActual = "entrenar";
+        cancelarPulsacionLarga();
         tabEntrenar.classList.add("activa");
         tabCrear.classList.remove("activa");
         seccionEntrenar.classList.add("activa");
@@ -132,7 +158,7 @@ document.addEventListener("DOMContentLoaded", () => {
         seccionPulso.classList.remove("activa");
 
         tituloMatriz.textContent = "🛠️ Diseñando Nueva Vía";
-        subtituloMatriz.textContent = "Haz clic en los círculos para marcar presas (Color Azul)";
+        subtituloMatriz.textContent = "1º clic azul · 2º clic verde (inicio) · 3º clic rojo (top) · 4º clic deselecciona";
 
         apagarTodosLosNodosVisuales();
         contenedorAccionVia.style.display = "none";
@@ -143,6 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     tabPulso.addEventListener("click", () => {
         modoActual = "pulso";
+        cancelarPulsacionLarga();
         tabPulso.classList.add("activa");
         tabEntrenar.classList.remove("activa");
         tabCrear.classList.remove("activa");
@@ -186,6 +213,78 @@ document.addEventListener("DOMContentLoaded", () => {
         filtroActivo.classList.add("activo");
     }
 
+    // Los filtros avanzados son exclusivos del bloque Comunidad: se muestran y
+    // se limpian solos según la sub-pestaña activa.
+    function sincronizarFiltrosComunidad() {
+        const activo = filtroEstado === "comunidad";
+        contFiltrosComunidad.style.display = activo ? "flex" : "none";
+
+        if (!activo && (inputBuscarComunidad.value !== "" || selectGradoComunidad.value !== "")) {
+            limpiarFiltrosComunidad();
+        }
+    }
+
+    function limpiarFiltrosComunidad() {
+        inputBuscarComunidad.value = "";
+        selectGradoComunidad.value = "";
+    }
+
+    // Los dos criterios se combinan entre sí (AND): por nombre y/o por grado.
+    // Se filtran en memoria sobre la copia del catálogo, así que teclear en el
+    // buscador no vuelve a pedir datos al servidor.
+    inputBuscarComunidad.addEventListener("input", aplicarFiltrosComunidad);
+    selectGradoComunidad.addEventListener("change", aplicarFiltrosComunidad);
+
+    function aplicarFiltrosComunidad() {
+        if (filtroEstado !== "comunidad") return;
+
+        const texto = inputBuscarComunidad.value.trim().toLowerCase();
+        const gradoMinimo = selectGradoComunidad.value;
+
+        const filtradas = catalogoComunidad.filter(ruta => {
+            const coincideNombre = texto === "" || (ruta.nombre || "").toLowerCase().includes(texto);
+            const coincideGrado = gradoMinimo === "" || cumpleGradoMinimo(ruta.grado, gradoMinimo);
+            return coincideNombre && coincideGrado;
+        });
+
+        pintarCatalogoRutas(filtradas, texto !== "" || gradoMinimo !== "");
+    }
+
+    /**
+     * Traduce un grado a una posición numérica dentro de ESCALA_GRADOS para
+     * poder compararlo. Acepta mayúsculas y espacios sobrantes. Devuelve null
+     * si el grado no pertenece a la escala (por ejemplo "8z" o un doble "+").
+     */
+    function puntuacionGrado(grado) {
+        if (!grado) return null;
+
+        const limpio = String(grado).trim().toLowerCase();
+        const exacto = ESCALA_GRADOS.indexOf(limpio);
+        if (exacto !== -1) return exacto;
+
+        // Solo admitimos un "+" de margen: si hay más, el grado no es nuestro.
+        const esMas = limpio.endsWith("+");
+        if (esMas && limpio.endsWith("++")) return null;
+
+        // Si el signo "+" no está, se usa el grado base como referencia:
+        // "7b" puntúa medio peldaño por debajo de "7b+".
+        const indiceBase = ESCALA_GRADOS.indexOf(esMas ? limpio.slice(0, -1) : limpio + "+");
+        return indiceBase === -1 ? null : indiceBase + (esMas ? 0.5 : -0.5);
+    }
+
+    /**
+     * El desplegable filtra por grado MÍNIMO: elegir 6a devuelve 6a, 6a+, 6b,
+     * 6b+... y todo lo más difícil. Un grado fuera de la escala se descarta,
+     * porque no hay forma de saber si supera el mínimo elegido.
+     */
+    function cumpleGradoMinimo(gradoRuta, gradoMinimo) {
+        const minimo = puntuacionGrado(gradoMinimo);
+        if (minimo === null) return true;
+
+        const actual = puntuacionGrado(gradoRuta);
+        return actual !== null && actual >= minimo;
+    }
+
     // --- GENERACIÓN DE LA MATRIZ INTERACTIVA CON COORDENADAS ---
     function generarMatrizSimulada() {
         matrizPresasContenedor.innerHTML = "";
@@ -224,9 +323,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 nodo.textContent = idActual; // Muestra el número de LED asignado
 
                 nodo.addEventListener("click", () => {
-                    if (modoActual === "crear") {
-                        gestionarClicNodoCreador(idActual);
-                    }
+                    if (modoActual !== "crear") return;
+                    // El long press provoca un clic fantasma al soltar: se descarta
+                    if (Date.now() - instantePulsacionLarga < MS_GUARDIA_CLIC) return;
+                    gestionarClicNodoCreador(idActual);
+                });
+
+                // Mantener pulsado deselecciona la presa al pasar el umbral de tiempo
+                nodo.addEventListener("mousedown", () => {
+                    if (modoActual !== "crear") return;
+                    if (!rolesPorPresa.has(idActual)) return;
+                    iniciarPulsacionLarga(idActual);
+                });
+
+                ["mouseup", "mouseleave", "mouseout", "touchend", "touchcancel"].forEach(evento => {
+                    nodo.addEventListener(evento, cancelarPulsacionLarga);
                 });
 
                 matrizPresasContenedor.appendChild(nodo);
@@ -238,54 +349,126 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // --- GESTIÓN DE NODOS EN MODO CONSTRUCTOR ---
+    // Ciclo de roles por cada clic: intermedia (azul) -> inicio (verde) -> top (rojo) -> fuera
+    const CICLO_ROLES = {
+        intermedia: "inicio",
+        inicio: "top",
+        top: null
+    };
+
+    const ROL_POR_DEFECTO = "intermedia";
+
+    const COLOR_HEX_POR_ROL = {
+        intermedia: "0000FF",
+        inicio: "00FF00",
+        top: "FF0000"
+    };
+
+    const MS_PULSACION_LARGA = 500;
+    const MS_GUARDIA_CLIC = 400;
+
     function gestionarClicNodoCreador(ledId) {
-        const indice = ledsSeleccionadosCreacion.indexOf(ledId);
-        if (indice === -1) {
-            ledsSeleccionadosCreacion.push(ledId);
+        // Si la presa no está en el diseño, el primer clic la mete como intermedia
+        const rolActual = rolesPorPresa.get(ledId);
+        const nuevoRol = rolActual === undefined
+            ? ROL_POR_DEFECTO
+            : CICLO_ROLES[rolActual];
+
+        if (nuevoRol === null || nuevoRol === undefined) {
+            rolesPorPresa.delete(ledId);
         } else {
-            ledsSeleccionadosCreacion.splice(indice, 1);
+            rolesPorPresa.set(ledId, nuevoRol);
         }
+
         actualizarNodosCreadorVisual();
         iluminarSeleccionFisica();
     }
 
-    function actualizarNodosCreadorVisual() {
-        document.querySelectorAll(".nodo-presa").forEach(nodo => {
-            nodo.classList.remove("creando-activa");
-        });
+    // Mantener pulsada una presa la saca del diseño (alternativa al 4º clic)
+    function iniciarPulsacionLarga(ledId) {
+        cancelarPulsacionLarga();
 
-        ledsSeleccionadosCreacion.forEach(id => {
-            const el = document.getElementById(`led-${id}`);
-            if (el) el.classList.add("creando-activa");
-        });
-
-        contadorPresasBadge.textContent = `${ledsSeleccionadosCreacion.length} presas elegidas`;
-        btnGuardarVia.disabled = ledsSeleccionadosCreacion.length === 0;
+        temporizadorPulsacion = setTimeout(() => {
+            rolesPorPresa.delete(ledId);
+            instantePulsacionLarga = Date.now();
+            actualizarNodosCreadorVisual();
+            iluminarSeleccionFisica();
+        }, MS_PULSACION_LARGA);
     }
 
+    function cancelarPulsacionLarga() {
+        if (temporizadorPulsacion) {
+            clearTimeout(temporizadorPulsacion);
+            temporizadorPulsacion = null;
+        }
+    }
+
+    function contarPresasPorRol(rol) {
+        let total = 0;
+        rolesPorPresa.forEach(tipo => {
+            if (tipo === rol) total++;
+        });
+        return total;
+    }
+
+    function actualizarNodosCreadorVisual() {
+        document.querySelectorAll(".nodo-presa").forEach(nodo => {
+            nodo.classList.remove("creando-activa", "presa-inicio", "presa-top");
+        });
+
+        rolesPorPresa.forEach((rol, id) => {
+            const el = document.getElementById(`led-${id}`);
+            if (!el) return;
+            el.classList.add(
+                rol === "inicio" ? "presa-inicio" :
+                rol === "top" ? "presa-top" :
+                "creando-activa"
+            );
+        });
+
+        contadorPresasBadge.textContent = `${rolesPorPresa.size} presas elegidas`;
+        contadorInicioBadge.textContent = contarPresasPorRol("inicio");
+        contadorIntermediaBadge.textContent = contarPresasPorRol("intermedia");
+        contadorTopBadge.textContent = contarPresasPorRol("top");
+        btnGuardarVia.disabled = rolesPorPresa.size === 0;
+    }
+
+    // El panel físico necesita un color por grupo: primero el azul (que limpia la
+    // tira) y después se superponen el verde de los inicios y el rojo de los tops.
     function iluminarSeleccionFisica() {
-        if (ledsSeleccionadosCreacion.length === 0) {
+        if (rolesPorPresa.size === 0) {
             fetch("/api/hardware/apagar", { method: "POST" }).catch(() => {});
             return;
         }
+
+        const grupos = [];
+        ["intermedia", "inicio", "top"].forEach(rol => {
+            const leds = [];
+            rolesPorPresa.forEach((tipo, id) => {
+                if (tipo === rol) leds.push(id);
+            });
+            if (leds.length > 0) {
+                grupos.push({ leds: leds, color: COLOR_HEX_POR_ROL[rol] });
+            }
+        });
+
         fetch("/api/hardware/encender-manual", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ leds: ledsSeleccionadosCreacion })
+            body: JSON.stringify({ grupos: grupos })
         }).catch(err => console.error("Error iluminando selección:", err));
     }
 
     function limpiarSeleccionCreador() {
-        if (ledsSeleccionadosCreacion.length === 0) return;
-        ledsSeleccionadosCreacion = [];
-        contadorPresasBadge.textContent = "0 presas elegidas";
-        btnGuardarVia.disabled = true;
+        cancelarPulsacionLarga();
+        if (rolesPorPresa.size === 0) return;
+        rolesPorPresa.clear();
         actualizarNodosCreadorVisual();
         fetch("/api/hardware/apagar", { method: "POST" }).catch(() => {});
     }
 
     btnLimpiarCreador.addEventListener("click", () => {
-        ledsSeleccionadosCreacion = [];
+        rolesPorPresa.clear();
         actualizarNodosCreadorVisual();
         iluminarSeleccionFisica();
     });
@@ -294,12 +477,18 @@ document.addEventListener("DOMContentLoaded", () => {
     formCrearVia.addEventListener("submit", (e) => {
         e.preventDefault();
 
+        const presas = [];
+        rolesPorPresa.forEach((rol, id) => {
+            presas.push({ led: id, tipo: rol });
+        });
+
         const payload = {
             nombre: txtNombreVia.value,
             grado: selGradoVia.value,
             equipador: usuario.nombre,
             usuario_correo: usuario.correo || usuario.email,
-            leds: ledsSeleccionadosCreacion
+            presas: presas,
+            leds: presas.map(p => p.led)
         };
 
         fetch("/api/rutas/crear", {
@@ -314,7 +503,7 @@ document.addEventListener("DOMContentLoaded", () => {
             .then(data => {
                 alert("✨ ¡Vía guardada con éxito y asignada a tus Proyectos!");
                 formCrearVia.reset();
-                ledsSeleccionadosCreacion = [];
+                rolesPorPresa.clear();
                 actualizarNodosCreadorVisual();
                 fetch("/api/hardware/apagar", { method: "POST" }).catch(() => {});
                 tabEntrenar.click();
@@ -327,6 +516,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // --- ACCIONES DE CATÁLOGO (LEER, SELECCIONAR Y BORRAR) ---
     function cargarCatalogoRutas() {
+        sincronizarFiltrosComunidad();
+
         let url = `/api/rutas?usuario=${usuario.correo || usuario.email}&estado=${filtroEstado}`;
 
         if (filtroEstado === "comunidad") {
@@ -336,77 +527,14 @@ document.addEventListener("DOMContentLoaded", () => {
         fetch(url)
             .then(res => res.json())
             .then(rutas => {
-                listaRutasContenedor.innerHTML = "";
-                if (rutas.length === 0) {
-                    const msg = document.createElement("p");
-                    msg.className = "subtitulo";
-                    msg.style.margin = "1rem auto";
-                    msg.style.textAlignment = "center";
-                    msg.textContent = "No hay vías disponibles en este bloque todavía.";
-                    listaRutasContenedor.appendChild(msg);
-                    return;
+                if (filtroEstado === "comunidad") {
+                    // Guardamos la copia íntegra y delegamos el pintado en los
+                    // filtros, que ya aplican nombre y/o grado sobre ella.
+                    catalogoComunidad = rutas;
+                    aplicarFiltrosComunidad();
+                } else {
+                    pintarCatalogoRutas(rutas);
                 }
-
-                rutas.forEach(ruta => {
-                    // Clonamos el contenido del template HTML de manera limpia
-                    const clon = plantillaRuta.content.cloneNode(true);
-                    const item = clon.querySelector(".item-ruta");
-
-                    // Rellenamos las propiedades de texto apuntando a sus selectores semánticos
-                    clon.querySelector(".ruta-nombre").textContent = ruta.nombre;
-                    clon.querySelector(".ruta-equipador").textContent = `Creador: ${ruta.equipador || 'Anónimo'}`;
-                    clon.querySelector(".grado-ruta").textContent = ruta.grado;
-
-                    const btnBorrar = clon.querySelector(".btn-borrar-via");
-                    const btnAgregar = clon.querySelector(".btn-agregar-comunidad");
-
-                    // Renderizado Condicional nativo: Conmutamos visibilidad de botones según la pestaña activa
-                    if (filtroEstado === "comunidad") {
-                        btnAgregar.style.display = "flex";
-
-                        btnAgregar.addEventListener("click", (e) => {
-                            e.stopPropagation(); // Evitamos iluminar la simulación al agregar
-
-                            const payloadAgregar = {
-                                usuario: usuario.correo || usuario.email,
-                                estado: "proyecto"
-                            };
-
-                            fetch(`/api/rutas/${ruta.id}/agregar`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify(payloadAgregar)
-                            })
-                                .then(res => {
-                                    if (res.status === 409) {
-                                        alert("💡 Esta vía ya se encuentra añadida en tu panel de Proyectos.");
-                                        return;
-                                    }
-                                    if (!res.ok) throw new Error();
-                                    alert(`✨ "${ruta.nombre}" ha sido añadida con éxito a tu lista de Proyectos.`);
-                                })
-                                .catch(err => {
-                                    console.error(err);
-                                    alert("❌ No se pudo importar la ruta de la comunidad.");
-                                });
-                        });
-                    } else {
-                        btnBorrar.style.display = "inline-block";
-
-                        btnBorrar.addEventListener("click", (e) => {
-                            e.stopPropagation();
-                            eliminarRutaDelCatatogo(ruta.id);
-                        });
-                    }
-
-                    // Al pinchar en la tarjeta iluminamos sus presas en la simulación
-                    item.addEventListener("click", () => {
-                        seleccionarRutaEnPanel(ruta.id);
-                    });
-
-                    // Inyectamos el nodo clonado procesado directamente al contenedor
-                    listaRutasContenedor.appendChild(clon);
-                });
             })
             .catch(err => {
                 console.error("Error al cargar rutas:", err);
@@ -417,6 +545,86 @@ document.addEventListener("DOMContentLoaded", () => {
                 errMsg.textContent = "Error de conexión con la API.";
                 listaRutasContenedor.appendChild(errMsg);
             });
+    }
+
+    // Dibuja en el panel la lista de vías recibida. 'hayFiltros' solo cambia el
+    // texto del estado vacío para distinguir "no hay nada" de "no hay nada que
+    // encaje con lo que has buscado".
+    function pintarCatalogoRutas(rutas, hayFiltros = false) {
+        listaRutasContenedor.innerHTML = "";
+
+        if (rutas.length === 0) {
+            const msg = document.createElement("p");
+            msg.className = "subtitulo";
+            msg.style.margin = "1rem auto";
+            msg.style.textAlignment = "center";
+            msg.textContent = hayFiltros
+                ? "Ninguna vía de la comunidad cumple los filtros seleccionados."
+                : "No hay vías disponibles en este bloque todavía.";
+            listaRutasContenedor.appendChild(msg);
+            return;
+        }
+
+        rutas.forEach(ruta => {
+            // Clonamos el contenido del template HTML de manera limpia
+            const clon = plantillaRuta.content.cloneNode(true);
+            const item = clon.querySelector(".item-ruta");
+
+            // Rellenamos las propiedades de texto apuntando a sus selectores semánticos
+            clon.querySelector(".ruta-nombre").textContent = ruta.nombre;
+            clon.querySelector(".ruta-equipador").textContent = `Creador: ${ruta.equipador || 'Anónimo'}`;
+            clon.querySelector(".grado-ruta").textContent = ruta.grado;
+
+            const btnBorrar = clon.querySelector(".btn-borrar-via");
+            const btnAgregar = clon.querySelector(".btn-agregar-comunidad");
+
+            // Renderizado Condicional nativo: Conmutamos visibilidad de botones según la pestaña activa
+            if (filtroEstado === "comunidad") {
+                btnAgregar.style.display = "flex";
+
+                btnAgregar.addEventListener("click", (e) => {
+                    e.stopPropagation(); // Evitamos iluminar la simulación al agregar
+
+                    const payloadAgregar = {
+                        usuario: usuario.correo || usuario.email,
+                        estado: "proyecto"
+                    };
+
+                    fetch(`/api/rutas/${ruta.id}/agregar`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payloadAgregar)
+                    })
+                        .then(res => {
+                            if (res.status === 409) {
+                                alert("💡 Esta vía ya se encuentra añadida en tu panel de Proyectos.");
+                                return;
+                            }
+                            if (!res.ok) throw new Error();
+                            alert(`✨ "${ruta.nombre}" ha sido añadida con éxito a tu lista de Proyectos.`);
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            alert("❌ No se pudo importar la ruta de la comunidad.");
+                        });
+                });
+            } else {
+                btnBorrar.style.display = "inline-block";
+
+                btnBorrar.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    eliminarRutaDelCatatogo(ruta.id);
+                });
+            }
+
+            // Al pinchar en la tarjeta iluminamos sus presas en la simulación
+            item.addEventListener("click", () => {
+                seleccionarRutaEnPanel(ruta.id);
+            });
+
+            // Inyectamos el nodo clonado procesado directamente al contenedor
+            listaRutasContenedor.appendChild(clon);
+        });
     }
 
     function seleccionarRutaEnPanel(id) {
@@ -433,11 +641,30 @@ document.addEventListener("DOMContentLoaded", () => {
                         contenedorAccionVia.style.display = "none";
                     }
                 }
+                // Si el servidor devuelve los roles, la simulación respeta el diseño original
+                if (data.presas && Array.isArray(data.presas)) {
+                    iluminarNodosVisualesConRoles(data.presas);
+                }
                 if (data.status === "error") {
                     console.warn("⚠️ Hardware no disponible:", data.message);
                 }
             })
             .catch(err => console.error("Error al iluminar ruta:", err));
+    }
+
+    // Pinta la vía en la simulación con el color que tendrá en el panel real
+    function iluminarNodosVisualesConRoles(presas) {
+        presas.forEach(presa => {
+            const idLed = presa.indiceLed !== undefined ? presa.indiceLed : presa.led;
+            const el = document.getElementById(`led-${idLed}`);
+            if (!el) return;
+            el.classList.remove("activo");
+            el.classList.add(
+                presa.tipo === "inicio" ? "presa-inicio" :
+                presa.tipo === "top" ? "presa-top" :
+                "activo"
+            );
+        });
     }
 
     // ACCIÓN DEL BOTÓN ¡ENCADENADA!
@@ -472,7 +699,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     function eliminarRutaDelCatatogo(id) {
-        if (!confirm("⚠️ ¿Estás seguro de que quieres eliminar esta vía de tu lista de entrenamiento?")) return;
+        // El borrado es global: la vía desaparece de tu lista Y del catálogo
+        // de la Comunidad, así que el aviso lo deja claro antes de destruirla.
+        if (!confirm("⚠️ ¿Eliminar esta vía?\n\nSe borrará de tu lista de entrenamiento y también del catálogo de la Comunidad. Es irreversible.")) return;
 
         fetch(`/api/rutas/${id}?usuario=${usuario.correo || usuario.email}`, { method: "DELETE" })
             .then(res => {
@@ -480,9 +709,23 @@ document.addEventListener("DOMContentLoaded", () => {
                 return res.json();
             })
             .then(data => {
+                // La comunidad se queda sin esta vía, así que la sacamos también
+                // de la copia en memoria para que el filtro no la repinte.
+                catalogoComunidad = catalogoComunidad.filter(ruta => ruta.id !== id);
+
+                // Si la vía borrada era la que está iluminada en el panel, la apagamos
+                if (rutaSeleccionadaId === id) {
+                    rutaSeleccionadaId = null;
+                    contenedorAccionVia.style.display = "none";
+                    apagarTodosLosNodosVisuales();
+                }
+
                 cargarCatalogoRutas();
             })
-            .catch(err => alert("❌ Error al intentar eliminar la vía de la BBDD."));
+            .catch(err => {
+                console.error(err);
+                alert("❌ Error al intentar eliminar la vía de la BBDD.");
+            });
     }
 
     // --- ACCIONES HARDWARE DIRECTAS ---
@@ -538,6 +781,8 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".nodo-presa").forEach(nodo => {
             nodo.classList.remove("activo");
             nodo.classList.remove("creando-activa");
+            nodo.classList.remove("presa-inicio");
+            nodo.classList.remove("presa-top");
         });
     }
 

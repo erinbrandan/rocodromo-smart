@@ -4,10 +4,18 @@
     --bg-tarjeta: #1c2333;
     --texto-claro: #f3f4f6;
     --texto-mutado: #9ca3af;
-    --color-primario: #00ff96; /* Verde Moonboard */
+    --color-primario: #00ff96; /* Verde Moonboard: tema de la interfaz */
     --color-peligro: #ef4444;
     --color-azul: #3b82f6;
     --borde: #2d3748;
+
+    /* Paleta del panel físico. Debe coincidir exactamente con los colores que
+       LedService.java y PresaRuta.java envían al bus de los LEDs, o el
+       simulador mentiría sobre lo que se ve en la pared. */
+    --led-inicio: #00ff00;    /* COLOR_INICIO      */
+    --led-intermedia: #0000ff; /* COLOR_INTERMEDIA */
+    --led-top: #ff0000;       /* COLOR_TOP         */
+    --led-borde: #4d4dff;     /* Realce del borde para que el azul destaque */
 }
 
 * {
@@ -471,6 +479,48 @@ footer {
     color: var(--color-primario);
 }
 
+/* FILTROS DEL CATÁLOGO COMUNITARIO (NOMBRE + GRADO MÍNIMO) */
+.filtros-busqueda {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.input-busqueda,
+.select-busqueda {
+    width: 100%;
+    background-color: var(--bg-principal);
+    border: 1px solid var(--borde);
+    color: var(--texto-claro);
+    padding: 0.5rem 0.75rem;
+    min-height: 38px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+
+.select-busqueda {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.2rem;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 1em;
+    text-align: left;
+}
+
+.input-busqueda::placeholder {
+    color: var(--texto-mutado);
+}
+
+.input-busqueda:focus,
+.select-busqueda:focus {
+    outline: none;
+    border-color: var(--color-primario);
+}
+
 /* ACCIONES DE BOTONES EN RUTAS */
 .btn-borrar-via, .btn-agregar-comunidad {
     position: absolute;
@@ -521,10 +571,10 @@ footer {
 }
 
 .nodo-presa.creando-activa {
-    background: radial-gradient(circle, #3498db 30%, #2980b9 100%);
+    background: radial-gradient(circle, var(--led-intermedia) 30%, #0000b3 100%);
     color: #fff;
-    box-shadow: 0 0 12px rgba(52, 152, 219, 0.8);
-    border-color: #5dade2;
+    box-shadow: 0 0 12px rgba(0, 0, 255, 0.8);
+    border-color: var(--led-borde);
     transform: scale(1.05);
 }
 
@@ -535,30 +585,76 @@ footer {
     box-shadow: none;
 }
 
-/* ESTADOS DE PRESAS */
+/* ESTADOS DE PRESAS (Roles del MoonBoard Builder) */
+/* Cada clic avanza de role: intermedia (azul) -> inicio (verde) -> top (rojo) */
+/* Los colores vienen de --led-*, la misma paleta que aplica el backend al bus. */
 .nodo-presa.presa-inicio {
-    background-color: var(--color-primario) !important;
+    background-color: var(--led-inicio) !important;
     color: #121824 !important;
     font-weight: 900;
-    box-shadow: 0 0 12px var(--color-primario);
+    box-shadow: 0 0 12px var(--led-inicio);
     border: 2px solid #ffffff !important;
 }
 
 .nodo-presa.presa-intermedia {
-    background: radial-gradient(circle, #3498db 30%, #2980b9 100%) !important;
+    background: radial-gradient(circle, var(--led-intermedia) 30%, #0000b3 100%) !important;
     color: #fff !important;
-    box-shadow: 0 0 12px rgba(52, 152, 219, 0.8);
-    border-color: #5dade2 !important;
+    box-shadow: 0 0 12px rgba(0, 0, 255, 0.8);
+    border-color: var(--led-borde) !important;
 }
 
 .nodo-presa.presa-top {
-    background-color: #f6eba6 !important;
-    color: #121824 !important;
+    background-color: #ef4444 !important;
+    color: #ffffff !important;
     font-weight: 900;
-    box-shadow: 0 0 15px #f6eba6;
-    border: 2px dashed #000000 !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.9);
+    border: 2px solid #ffffff !important;
     transform: scale(1.05);
 }
+
+/* Leyenda de los roles en el panel lateral */
+.leyenda-roles {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0.6rem 0 0.9rem;
+    font-size: 0.78rem;
+    color: var(--texto-mutado);
+}
+
+.leyenda-roles .fila-leyenda {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.leyenda-roles .punto {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.punto-intermedia { background: var(--led-intermedia); }
+.punto-inicio { background: var(--led-inicio); }
+.punto-top { background: var(--led-top); }
+
+.desglose-roles {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--texto-mutado);
+}
+
+.desglose-roles .marca {
+    font-weight: 800;
+}
+
+.marca-inicio { color: var(--led-inicio); }
+.marca-top { color: var(--led-top); }
+.marca-intermedia { color: var(--led-borde); }
 
 /* ============================================================= */
 /* MINIJUEGO "PULSO VERTICAL"                                      */
@@ -709,6 +805,10 @@ footer {
 
     .btn-filtro {
         flex: initial;
+    }
+
+    .filtros-busqueda {
+        flex-direction: row;
     }
 
     .cuadrilla-presas {

@@ -88,11 +88,49 @@ public class DatabaseConfig {
 
                     // Se asegura el poblado inicial de la matriz de presas
                     poblarPresasSiVacia(conn);
+
+                    // Se actualizan las bases de datos creadas antes de existir los roles
+                    migrarRolesPresas(conn);
                 }
             }
         } catch (Exception e) {
             System.err.println("❌ Error crítico al inicializar las tablas: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Añade la columna 'tipo' a RUTA_PRESAS en las bases de datos que ya existían
+     * antes de la incorporación de los roles de presa (inicio / intermedia / top).
+     *
+     * La migración NO puede vivir en init.sql porque ese script se reejecuta en cada
+     * arranque dentro de un único bloque try: un 'ALTER TABLE' repetido lanzaría una
+     * excepción y abortaría las sentencias siguientes. Aquí se comprueba primero el
+     * esquema real con 'PRAGMA table_info', de modo que la operación es idempotente.
+     */
+    private static void migrarRolesPresas(Connection conn) {
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("PRAGMA table_info(RUTA_PRESAS)")) {
+
+            boolean columnaYaExiste = false;
+            while (rs.next()) {
+                if ("tipo".equalsIgnoreCase(rs.getString("name"))) {
+                    columnaYaExiste = true;
+                    break;
+                }
+            }
+
+            if (columnaYaExiste) {
+                return;
+            }
+
+            try (Statement alter = conn.createStatement()) {
+                alter.executeUpdate("ALTER TABLE RUTA_PRESAS ADD COLUMN tipo TEXT NOT NULL DEFAULT 'intermedia'");
+            }
+            System.out.println("🛠️ Migración aplicada: RUTA_PRESAS.tipo (roles de presa por vía).");
+
+        } catch (SQLException e) {
+            System.err.println("❌ Error al migrar los roles de presa en RUTA_PRESAS: " + e.getMessage());
         }
     }
 

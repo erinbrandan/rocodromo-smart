@@ -5,8 +5,11 @@
 package com.rocodromo.api;
 
 import com.rocodromo.hardware.LedService;
+import com.rocodromo.model.PresaRuta;
 import io.javalin.http.Context;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -63,7 +66,12 @@ public class HardwareController {
 
     /**
      * POST /api/hardware/encender-manual
-     * Body: {"leds": [1, 2, 3]}
+     * Body legacy: {"leds": [1, 2, 3], "color": "3498DB"} (opcional)
+     * Body multicolor: {"grupos": [{"leds": [1,2], "color": "3498DB"},
+     *                             {"leds": [3],   "color": "00FF00"}]}
+     *
+     * En el modo multicolor el primer grupo limpia el panel y los siguientes
+     * se superponen, permitiendo reproducir una vía con inicio verde y top rojo.
      */
     @SuppressWarnings("unchecked")
     public static void encenderManual(Context ctx) {
@@ -71,25 +79,36 @@ public class HardwareController {
 
         try {
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
-            Object ledsRaw = body.get("leds");
+            Map<String, List<Integer>> gruposPorColor = new LinkedHashMap<>();
 
-            if (!(ledsRaw instanceof List)) {
+            // Formato multicolor: cada grupo trae su propio color
+            if (body.get("grupos") instanceof List<?> grupos) {
+                for (Object grupo : grupos) {
+                    if (!(grupo instanceof Map)) continue;
+                    Map<?, ?> mapaGrupo = (Map<?, ?>) grupo;
+                    List<Integer> leds = extraerLeds(mapaGrupo.get("leds"));
+                    if (leds.isEmpty()) continue;
+                    gruposPorColor
+                            .computeIfAbsent(extraerColor(mapaGrupo.get("color")), k -> new ArrayList<>())
+                            .addAll(leds);
+                }
+            }
+
+            // Formato clásico: una única lista de LEDs con color opcional
+            if (gruposPorColor.isEmpty()) {
+                List<Integer> leds = extraerLeds(body.get("leds"));
+                if (!leds.isEmpty()) {
+                    gruposPorColor.put(extraerColor(body.get("color")), leds);
+                }
+            }
+
+            if (gruposPorColor.isEmpty()) {
                 ctx.status(400);
-                ctx.json(Map.of("status", "error", "message", "El parámetro 'leds' debe ser una lista de números válidos."));
+                ctx.json(Map.of("status", "error", "message", "Indica al menos un LED en 'leds' o en 'grupos'."));
                 return;
             }
 
-            List<Integer> leds = ((List<?>) ledsRaw).stream()
-                    .map(num -> ((Number) num).intValue())
-                    .toList();
-
-            if (leds.isEmpty()) {
-                ctx.status(400);
-                ctx.json(Map.of("status", "error", "message", "La lista 'leds' no puede estar vacía."));
-                return;
-            }
-
-            boolean exito = ledService.enviarRutaAlHardware(leds);
+            boolean exito = aplicarGruposPorColor(gruposPorColor);
 
             if (exito) {
                 ctx.status(200);
@@ -124,7 +143,6 @@ public class HardwareController {
             }
 
             int led = ((Number) ledRaw).intValue();
-
             boolean exito = ledService.encenderLedUnico(led);
 
             if (exito) {
@@ -149,8 +167,6 @@ public class HardwareController {
     public static void agregarLed(Context ctx) {
         System.out.println("📬 [API] Petición web: Agregar LED al estado actual.");
 
-        // Por ahora reutiliza encender un LED; en el daemon se enviará "agregar:"
-        // cuando se implemente el comando específico.
         try {
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
             Object ledRaw = body.get("led");
@@ -162,7 +178,8 @@ public class HardwareController {
             }
 
             int led = ((Number) ledRaw).intValue();
-            boolean exito = ledService.encenderLedUnico(led);
+            // Acumulativo de verdad: superpone en vez de borrar el resto del panel
+            boolean exito = ledService.agregarLedsAlHardware(List.of(led), LedService.COLOR_NARANJA);
 
             if (exito) {
                 ctx.status(200);
@@ -185,11 +202,72 @@ public class HardwareController {
     /**
      * Método interno para que otros controladores (ej. RutaController)
      * soliciten el encendido físico de una vía al seleccionar un proyecto.
+     * Reproduce el diseño original agrupando las presas por su rol.
      */
-    public static boolean encenderRutaInterna(List<Integer> leds) {
-        if (leds == null || leds.isEmpty()) {
+    public static boolean encenderPresasInterna(List<PresaRuta> presas) {
+        if (presas == null || presas.isEmpty()) {
             return false;
         }
-        return ledService.enviarRutaAlHardware(leds);
+        Map<String, List<Integer>> gruposPorColor = new LinkedHashMap<>();
+        for (PresaRuta presa : presas) {
+            gruposPorColor
+                    .computeIfAbsent(presa.getColorHex(), k -> new ArrayList<>())
+                    .add(presa.getIndiceLed());
+        }
+        return aplicarGruposPorColor(gruposPorColor);
+    }
+
+    /**
+     * Vuelca al panel los grupos de LEDs recibidos. El primer grupo se enciende
+     * limpiando el panel (comando 'encender') y los siguientes se superponen
+     * (comando 'agregar'), de ahí la dependencia del orden de inserción.
+     */
+    private static boolean aplicarGruposPorColor(Map<String, List<Integer>> gruposPorColor) {
+        boolean primerGrupo = true;
+        boolean todoCorrecto = true;
+
+        for (Map.Entry<String, List<Integer>> grupo : gruposPorColor.entrySet()) {
+            List<Integer> leds = grupo.getValue();
+            String color = grupo.getKey();
+
+            boolean exito = primerGrupo
+                    ? ledService.enviarRutaAlHardware(leds, color)
+                    : ledService.agregarLedsAlHardware(leds, color);
+
+            System.out.println("🔦 [Hardware] Grupo " + (primerGrupo ? "base" : "superpuesto")
+                    + ": " + leds.size() + " LED(s) en #" + color + " -> " + (exito ? "OK" : "FALLO"));
+
+            todoCorrecto &= exito;
+            primerGrupo = false;
+        }
+
+        return todoCorrecto;
+    }
+
+    /**
+     * Normaliza un valor JSON a lista de índices de LED, descartando cualquier
+     * entrada que no sea numérica.
+     */
+    private static List<Integer> extraerLeds(Object ledsRaw) {
+        if (!(ledsRaw instanceof List<?> lista)) {
+            return List.of();
+        }
+        List<Integer> leds = new ArrayList<>();
+        for (Object valor : lista) {
+            if (valor instanceof Number numero) {
+                leds.add(numero.intValue());
+            }
+        }
+        return leds;
+    }
+
+    /**
+     * Valida un color HEX RRGGBB. Si falta o es inválido se cae al verde del panel.
+     */
+    private static String extraerColor(Object colorRaw) {
+        if (colorRaw instanceof String color && color.matches("[0-9a-fA-F]{6}")) {
+            return color;
+        }
+        return LedService.COLOR_VERDE;
     }
 }

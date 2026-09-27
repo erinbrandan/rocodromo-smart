@@ -44,6 +44,25 @@
                         <button id="filtro-comunidad" class="btn-filtro">Comunidad</button>
                     </div>
                 </div>
+                <div id="filtros-comunidad" class="filtros-busqueda" style="display: none;">
+                    <input type="text" id="buscar-nombre-comunidad" class="input-busqueda" autocomplete="off"
+                           placeholder="🔍 Buscar por nombre..." aria-label="Filtrar vías de la comunidad por nombre">
+                    <select id="filtrar-grado-comunidad" class="select-busqueda" aria-label="Filtrar por grado mínimo">
+                        <option value="">Todos los grados</option>
+                        <option value="6a">6a</option>
+                        <option value="6a+">6a+</option>
+                        <option value="6b">6b</option>
+                        <option value="6b+">6b+</option>
+                        <option value="6c">6c</option>
+                        <option value="6c+">6c+</option>
+                        <option value="7a">7a</option>
+                        <option value="7a+">7a+</option>
+                        <option value="7b">7b</option>
+                        <option value="7b+">7b+</option>
+                        <option value="7c">7c</option>
+                        <option value="7c+">7c+</option>
+                    </select>
+                </div>
                 <div id="lista-rutas" class="lista-vias">
                     <p class="cargando">Cargando vías...</p>
                 </div>
@@ -53,7 +72,14 @@
         <div id="seccion-crear" class="contenido-tab">
             <div class="tarjeta constructor-via">
                 <h3>🛠️ MoonBoard Builder</h3>
-                <p class="subtitulo">Haz clic en las presas de la matriz derecha para diseñar tu camino lumínico.</p>
+                <p class="subtitulo">Haz clic en las presas de la matriz derecha para diseñar tu camino lumínico. Cada clic cambia el rol de la presa y al mantenerla pulsada la deseleccionas.</p>
+
+                <div class="leyenda-roles">
+                    <div class="fila-leyenda"><span class="punto punto-intermedia"></span> 1º clic → <strong>Intermedia</strong> (azul)</div>
+                    <div class="fila-leyenda"><span class="punto punto-inicio"></span> 2º clic → <strong>Inicio</strong> (verde)</div>
+                    <div class="fila-leyenda"><span class="punto punto-top"></span> 3º clic → <strong>Top</strong> (rojo)</div>
+                    <div class="fila-leyenda">🔒 4º clic o mantener pulsado → deseleccionar</div>
+                </div>
 
                 <form id="form-crear-via" class="formulario-auth">
                     <div class="grupo-input">
@@ -81,6 +107,11 @@
                     <div class="grupo-input">
                         <label>Presas seleccionadas</label>
                         <div id="contador-presas" class="contador-badge">0 presas elegidas</div>
+                        <div class="desglose-roles">
+                            <span>Inicio: <span id="contador-inicio" class="marca marca-inicio">0</span></span>
+                            <span>Intermedias: <span id="contador-intermedia" class="marca marca-intermedia">0</span></span>
+                            <span>Top: <span id="contador-top" class="marca marca-top">0</span></span>
+                        </div>
                     </div>
 
                     <div class="botonera-vertical">

@@ -68,11 +68,11 @@ public class App {
         // Endpoint para el botón ¡Encadenada! (Cambio de estado del Proyecto)
         app.put("/api/rutas/{id}/estado", RutaController::actualizarEstado);
 
-        // Rutas de control manual y directo del Hardware (Tira de LEDs)
+        // Rutas de control manual y directo del Hardware (Tira de LEDS)
         app.post("/api/hardware/apagar", HardwareController::apagarPanel);
         app.post("/api/hardware/encender-manual", HardwareController::encenderManual);
 
-        // Control fino de LEDs individuales (feedback en tiempo real desde el creador de vías)
+        // Control fino de LEDS individuales (feedback en tiempo real desde el creador de vías)
         app.post("/api/hardware/encender-led", HardwareController::encenderUnicoLed);
         app.post("/api/hardware/agregar-led", HardwareController::agregarLed);
 
@@ -106,7 +106,7 @@ public class App {
         // 3. Arrancar el servidor en el puerto 8080
         app.start(8080);
 
-        // 4. Inicializar el daemon Python para control en tiempo real de los LEDs
+        // 4. Inicializar el daemon Python para control en tiempo real de los LEDS
         HardwareController.iniciarHardware();
 
         // 5. Registrar parada ordenada del daemon al cerrar la aplicación

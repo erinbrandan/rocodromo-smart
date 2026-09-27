@@ -18,23 +18,35 @@ La API REST expone endpoints RESTful para autenticación de usuarios, CRUD del c
 
 ### 🐍 Python — Script Esclavo de Hardware (`leds.py`)
 
-El control de la tira de LEDs WS2812B/WS2811 se delega a un **script Python independiente** que se invoca de forma asíncrona desde la JVM mediante `ProcessBuilder`. Esta arquitectura por separación de procesos no es una capricho: es una **decisión de ingeniería defensible**.
+El control de la tira de LEDs WS2812B/WS2811 se delega a un **script Python independiente** que se invoca desde la JVM mediante `ProcessBuilder`. Esta arquitectura por separación de procesos no es un capricho: es una **decisión de ingeniería defensible**.
 
-Los LEDs direccionables WS2812B requieren una señal de datos con frecuencias de microsegundos (modulación por PWM/DMA a 800 KHz). El **Garbage Collector de Java (G1/ZGC)** introduce pausas impredecibles de recolección que, si la JVM tuviera acceso directo al bus GPIO, provocarían parpadeos, corrupción de colores o apagados momentáneos en la tira. Al ejecutar el control GPIO en un proceso Python separado con prioridad de CPU independiente, se **aisla completamente la capa de tiempo real del hardware** de las pausas de GC de la JVM.
+Los LEDs direccionables WS2812B requieren una señal de datos con tiempos de microsegundos (~800 KHz). El **Garbage Collector de Java (G1/ZGC)** introduce pausas impredecibles de recolección que, si la JVM tuviera acceso directo al bus GPIO, provocarían parpadeos, corrupción de colores o apagados momentáneos en la tira. Al ejecutar el control GPIO en un proceso Python separado, se **aisla la capa de tiempo real del hardware** de las pausas de GC de la JVM.
 
-La comunicación entre ambos procesos se realiza mediante **pipes del sistema operativo**: Java lanza el script con `ProcessBuilder`, le pasa los parámetros (comando, lista de LEDs, brillo, pin GPIO) como argumentos de consola, y libera inmediatamente el hilo de la petición HTTP tras un chequeo de 50 ms. Si el script no falla en ese intervalo, se asume que la tira se está actualizando en background y la respuesta JSON se devuelve al cliente sin bloquear el servidor.
+`leds.py` habla con el panel a través de **Adafruit Blinka** (`board` + `neopixel`), que es el driver indicado en `requirements.txt`.
+
+La comunicación entre ambos procesos tiene **dos modos**, y el servicio elige el mejor disponible en cada llamada:
+
+**a) Daemon (preferente).** Un proceso Python persistente que se arranca una sola vez y se queda esperando órdenes por **stdin**, de modo que la tira se inicializa una única vez y no hay coste de arranque por comando. El protocolo es un texto por línea: `encender:<ids>:<color>`, `agregar:<ids>:<color>`, `apagar` y `salir`. Java confirma cada orden leyendo la línea de respuesta (`OK:...` / `ERR:...`).
+
+**b) CLI (fallback).** Si el daemon no está disponible, se lanza `leds.py` como proceso independiente por llamada, pasándole los parámetros (comando, lista de LEDs, total de LEDs, pin GPIO, brillo y color) como argumentos de consola. El hilo de la petición HTTP se libera tras un chequeo de 50 ms: si el script no falla en ese intervalo, se asume que la tira se está actualizando en background y la respuesta JSON se devuelve al cliente sin bloquear el servidor.
 
 ```text
-┌─────────────┐   ProcessBuilder  ┌─────────────┐   GPIO / DMA     ┌──────────────┐
-│   Frontend  │  ◄──── JSON ────► │  Java API   │ ──── pipes ────► │  leds.py     │
-│  (Browser)  │                   │  (Javalin)  │                  │  (rpi_ws281x)│
-└─────────────┘                   └──────┬──────┘                  └──────┬───────┘
-                                         │                                 │
-                                    ┌────▼──────┐                   ┌──────▼───────┐
-                                    │  SQLite   │                   │ Tira WS2812B │
-                                    │ (HikariCP)│                   │   GPIO 18    │
-                                    └───────────┘                   └──────────────┘
+┌─────────────┐   Fetch / JSON   ┌─────────────┐   stdin / pipes   ┌──────────────┐
+│   Frontend  │  ◄─────────────► │  Java API   │ ◄───────────────► │   leds.py    │
+│  (Browser)  │                  │  (Javalin)  │   daemon: 1 proc  │              │
+└─────────────┘                  └──────┬──────┘   CLI: N procs     └──────┬───────┘
+                                        │                                 │
+                                   ┌────▼──────┐                   ┌──────▼───────┐
+                                   │  SQLite   │                   │  Blinka      │
+                                   │ (HikariCP)│                   │ (neopixel)   │
+                                   └───────────┘                   └──────┬───────┘
+                                                                          │
+                                                                   ┌──────▼───────┐
+                                                                   │ Tira WS2812B │
+                                                                   │  GPIO 18     │
+                                                                   └──────────────┘
 ```
+
 
 ### 🌐 Frontend — HTML5, CSS3, JavaScript Vanilla
 
@@ -49,10 +61,10 @@ Las páginas del frontend son:
 | `login.html` | Formulario de autenticación de escaladores |
 | `registro.html` | Alta de nuevos usuarios con hash SHA-256 |
 | `dashboard.html` | Panel principal: catálogo de rutas, simulador LED, control de hardware y minijuego Pulso Vertical |
-| `css/estilos.css` | Hoja de estilos global del sistema (incluye simulador y ranking del Pulso Vertical) |
+| `css/estilos.css` | Hoja de estilos global del sistema (simulador de presas, roles por color, filtros del catálogo y ranking del Pulso Vertical) |
 | `js/login.js` | Lógica de autenticación vía Fetch API |
 | `js/registro.js` | Validación y envío del formulario de registro |
-| `js/dashboard.js` | Motor de interacción: selección de rutas, envío de comandos LED, gestión de estados y simulador del Pulso Vertical |
+| `js/dashboard.js` | Motor de interacción: catálogo y sus filtros, selección de vías, roles en el MoonBoard Builder, envío de comandos LED multicolor y simulador del Pulso Vertical |
 
 ---
 
@@ -95,11 +107,12 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
 └──────────┬───────────────┘                  │
            │                                  │ N:1
            │ N:M                              ▼
-           └──────────────────►┌──────────────────────────┐
+           └──────────────────►                               ┌──────────────────────────┐
                                │       RUTA_PRESAS        │
                                ├──────────────────────────┤
                                │ PK,FK ruta_id   INTEGER  │
                                │ PK,FK presa_id  INTEGER  │
+                               │    tipo        TEXT (CHK) │──► 'inicio'|'intermedia'|'top'
                                └──────────────────────────┘
 
 ┌──────────────────────────────────────────┐
@@ -120,9 +133,47 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
 | `USUARIOS` | Credenciales y datos de los escaladores. La contraseña se almacena como hash SHA-256. Clave primaria: correo electrónico. |
 | `RUTAS` | Catálogo global de vías de escalada creadas por los usuarios (nombre, grado, equipador, fecha de creación). |
 | `PRESAS` | Diccionario de coordenadas del panel physical (X, Y) vinculadas al índice del LED correspondiente. Se pre-cargan 198 registros maestros (grid 18×11). |
-| `RUTA_PRESAS` | Tabla intermedia N:M que asocia cada ruta con la lista de presas/LEDs que la componen. |
-| `HISTORIAL_ENTRENAMIENTO` | Registro de progresión del escalador. Clave primaria compuesta `(usuario_id, ruta_id)` para evitar duplicados. Campo `estado` con constraint CHECK: `proyecto` o `encadenada`. |
+| `RUTA_PRESAS` | Tabla intermedia N:M que asocia cada ruta con la lista de presas/LEDs que la componen. La columna `tipo` guarda el papel de cada presa dentro del diseño de la vía, con constraint CHECK: `inicio`, `intermedia` o `top` (ver [Roles de presa](#roles-de-presa-por-vía)). |
+| `HISTORIAL_ENTRENAMIENTO` | Registro de progresión del escalador. Clave primaria compuesta `(usuario_id, ruta_id)` para evitar duplicados. Campo `estado` con constraint CHECK: `proyecto` o `encadenada`. Las tres tablas cuelgan de `RUTAS` con `ON DELETE CASCADE`, así que al borrar una vía desaparecen en cascada sus presas y todas sus adoptaciones. |
 | `RANKING_PULSO_VERTICAL` | Marcas registradas en el minijuego Pulso Vertical: nombre del jugador, tiempo aguantado en segundos (con decimales) y fecha de registro. |
+
+---
+
+## 🧗 Catálogo de Vías
+
+El catálogo es **global**: toda vía creada por cualquier escalador vive en `RUTAS` y es visible en el bloque "Comunidad" para todo el mundo. Cada escalador mantiene además su **propia lista** de vías, en `HISTORIAL_ENTRENAMIENTO`, con dos estados posibles (`proyecto` y `encadenada`).
+
+### Ciclo de vida de una vía
+
+| Acción | Qué ocurre |
+|---|---|
+| **Crear** | Se inserta en `RUTAS`, sus presas con su rol en `RUTA_PRESAS` y el vínculo del autor en `HISTORIAL_ENTRENAMIENTO` con estado `proyecto`. Todo en una única transacción ACID (`RutaDAO.guardarRuta`). |
+| **Adoptar desde la Comunidad** | `POST /api/rutas/{id}/agregar` inserta el vínculo del usuario. Usa `INSERT OR IGNORE`, así que adoptar dos veces la misma vía es idempotente y devuelve `409` en el frontend. |
+| **Encadenar** | `PUT /api/rutas/{id}/estado` promociona la vía de `proyecto` a `encadenada` en la lista del usuario. |
+| **Eliminar** | `DELETE /api/rutas/{id}` borra la fila de `RUTAS` y, **por cascada**, sus `RUTA_PRESAS` y *todos* sus `HISTORIAL_ENTRENAMIENTO`: la vía desaparece de la Comunidad y de la lista de cualquier escalador que la hubiera adoptado. El borrado solo se permite si la vía estaba en la lista del usuario solicitante, de modo que conocer un ID ajeno no basta. |
+
+### Roles de presa por vía
+
+Cada presa de una vía tiene un papel semántico que se guarda en `RUTA_PRESAS.tipo` y que se traduce a un color en el panel físico. Es lo que permite que una misma vía se encienda multicolor, replicando el diseño original del MoonBoard:
+
+| Rol | Significado | Color |
+|---|---|---|
+| `inicio` | Los apoyos de salida | Verde `00FF00` |
+| `intermedia` | El cuerpo de la vía | Azul `0000FF` |
+| `top` | El remate final | Rojo `FF0000` |
+
+En el MoonBoard Builder se asignan clicando sucesivamente sobre la matriz: 1er clic → intermedia, 2º → inicio, 3º → top, y un 4º clic o mantener pulsado deselecciona. `PresaRuta.java` centraliza la equivalencia rol ↔ color para que backend, hardware y frontend compartan una sola definición de la paleta.
+
+Al seleccionar una vía, el backend agrupa las presas por color y las envía en ese orden: el primer grupo limpia el panel y los siguientes se superponen, de modo que un solo viaje por el bus pinta la vía entera multicolor.
+
+### Filtros del catálogo
+
+En el bloque "Comunidad" hay dos filtros combinables (se aplican a la vez, con AND):
+
+- **Por nombre:** búsqueda de texto sobre el nombre de la vía, sin distinguir mayúsculas.
+- **Por grado mínimo:** un desplegable con un apartado inicial "Todos los grados" que anula el criterio. Elegir `6a` devuelve `6a`, `6a+`, `6b`, `6b+` y todo lo más difícil. La comparación se hace sobre una escala ordenada (`ESCALA_GRADOS` en `dashboard.js`); un grado que no esté en la escala se descarta al filtrar, porque no hay forma de saber si supera el mínimo.
+
+El filtrado se resuelve en el navegador sobre la respuesta ya descargada de `/api/rutas`, así que escribir en el buscador no genera peticiones adicionales. Los filtros se limpian solos al salir de la pestaña Comunidad.
 
 ---
 
@@ -134,10 +185,10 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
 |---|---|
 | **SBC** | Raspberry Pi 3 Modelo B (Broadcom BCM2837, 4 núcleos ARM Cortex-A53 @ 1.2 GHz, 1 GB RAM) |
 | **Fuente de alimentación** | Regulada a 5 V / mínimo 5 A (10 A recomendado para tiras largas). **Nunca alimentar la tira desde los pines GPIO de la RPi.** |
-| **Tira de LEDs** | WS2812B o WS2811 (Neopixel Compatible) — Conexión al **Pin Físico 12 (GPIO 18 / PWM0)** compartiendo masa (GND) con la SBC |
+| **Tira de LEDs** | WS2812B o WS2811 (Neopixel Compatible) — Conexión de datos al **Pin Físico 12 (GPIO 18)** compartiendo masa (GND) con la SBC |
 | **Almacenamiento** | MicroSD Clase 10 (mín. 16 GB) con Raspberry Pi OS |
 
-> **Nota de hardware:** El Pin Físico 12 corresponde al GPIO 18, que es el canal PWM0 del BCM2837. Esta es la única pata del Raspberry Pi que soporta DMA para la señalización precisa que requieren los LEDs WS281x sin usar bitbanging por software.
+> **Nota de hardware:** El Pin Físico 12 corresponde al GPIO 18, que es el canal PWM0 del BCM2837. `leds.py` recibe el número de pin como parámetro y lo resuelve con `board.D<pin>` a través de Blinka, así que el cable de datos de la tira va a esa pata y la masa a un GND común con la RPi. Los parámetros vienen de la tabla `CONFIGURACION_LED`, así que se pueden cambiar sin tocar el código.
 
 ### Software
 
@@ -147,7 +198,7 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
 | **Java** | JDK 17 o superior (OpenJDK recomendado) |
 | **Python** | Python 3.9+ |
 | **Maven** | 3.8+ (para compilar el JAR en entorno de desarrollo) |
-| **Librerías Python** | `rpi-ws281x>=5.0.0`, `adafruit-circuitpython-neopixel>=6.0.0`, `Adafruit-Blinka>=8.0.0` |
+| **Librerías Python** | `Adafruit-Blinka>=8.0.0`, `adafruit-circuitpython-neopixel>=6.0.0` |
 
 ---
 
@@ -210,6 +261,17 @@ Al ejecutarse por primera vez, el sistema:
 2. Ejecutará las migraciones DDL desde `db/init.sql` (creación de tablas)
 3. Poblará la tabla `PRESAS` con los 198 registros maestros del grid 18×11 (mapeo LED 1-198)
 4. Arrancará el servidor HTTP en el puerto **8080**
+
+### Desarrollo sin hardware GPIO
+
+En una máquina de desarrollo que no sea una Raspberry Pi (o sin la tira conectada), `leds.py` detecta que Blinka no está disponible y entra en **modo simulación**: no toca el GPIO y en su lugar imprime en la consola un resumen de lo que habría pintado en el panel. La API, la base de datos y el frontend funcionan igual, así que se puede desarrollar toda la parte web sin panel físico.
+
+Ese modo se activa solo (`leds.py` captura el `ImportError` de `board`/`neopixel`), pero se puede forzar con la variable de entorno `FORCE_SIMULATION`, útil para silenciar el aviso de dependencias ausentes:
+
+```bash
+# Arrancar el servidor sin tocar el GPIO
+FORCE_SIMULATION=1 java -jar rocodromo-smart-1.0-SNAPSHOT.jar
+```
 
 ### Paso 5 — Acceso
 
@@ -287,6 +349,7 @@ rocodromo-smart/
     │   ├── model/
     │   │   ├── ConfiguracionLed.java      # Modelo de configuración de hardware
     │   │   ├── Presa.java                 # Modelo de presa/LED
+    │   │   ├── PresaRuta.java             # Presa + rol dentro de una vía (inicio/intermedia/top)
     │   │   ├── RankingPulsoVertical.java  # Modelo de marca del ranking
     │   │   ├── Ruta.java                  # Modelo de ruta de escalada
     │   │   └── Usuario.java               # Modelo de usuario
@@ -314,13 +377,15 @@ rocodromo-smart/
 |---|---|---|
 | `GET` | `/api/estado` | Diagnóstico del estado del backend |
 | `GET` | `/api/rutas` | Listado de rutas (global o filtrado por usuario/estado) |
-| `POST` | `/api/rutas/crear` | Crear una nueva ruta de escalada |
+| `POST` | `/api/rutas/crear` | Crear una nueva vía de escalada |
 | `POST` | `/api/rutas/{id}/seleccionar` | Seleccionar y encender una ruta en el panel LED |
 | `POST` | `/api/rutas/{id}/agregar` | Vincular ruta comunitaria al historial del usuario |
 | `PUT` | `/api/rutas/{id}/estado` | Cambiar estado de la vía (`proyecto` → `encadenada`) |
-| `DELETE` | `/api/rutas/{id}` | Eliminar ruta del catálogo personal |
+| `DELETE` | `/api/rutas/{id}` | Eliminar la vía **de todo el sistema** (ver [Ciclo de vida de una vía](#ciclo-de-vida-de-una-vía)) |
 | `POST` | `/api/hardware/apagar` | Apagar todos los LEDs del panel |
-| `POST` | `/api/hardware/encender-manual` | Encender LEDs específicos (diagnóstico) |
+| `POST` | `/api/hardware/encender-manual` | Encender LEDs por grupos con color (diagnóstico y diseño de vías) |
+| `POST` | `/api/hardware/encender-led` | Encender un único LED (feedback en tiempo real) |
+| `POST` | `/api/hardware/agregar-led` | Superponer un único LED sin limpiar el panel |
 | `POST` | `/api/usuarios/registro` | Registrar un nuevo escalador |
 | `POST` | `/api/usuarios/login` | Autenticar escalador |
 | `POST` | `/api/juego/pulso-vertical/iniciar` | Iniciar el minijuego (cuenta atrás de 6 s) |
@@ -362,11 +427,13 @@ Modo de entrenamiento lúdico en tiempo real implementado sobre el panel LED. El
 
 ### Soporte de color en el hardware
 
-Para la fase naranja se amplió el protocolo Java ↔ Python:
+El color por LED es una capacidad transversal, no exclusiva del minijuego. La comparten el minijego y el diseño de vías, así que el protocolo Java ↔ Python lo define en tres piezas:
 
-- `LedService.java` define los colores `COLOR_VERDE` (`00FF96`), `COLOR_ROJO` (`FF0000`) y `COLOR_NARANJA` (`FFA500`).
-- Nuevo método `agregarLedsAlHardware()` que **superpone** LEDs sin limpiar el resto del panel (comando daemon `agregar:`), permitiendo pintar de naranja sobre el verde.
+- `LedService.java` define los colores de estado del panel: `COLOR_VERDE` (`00FF00`), `COLOR_ROJO` (`FF0000`) y `COLOR_NARANJA` (`FFA500`). Los roles de presa tienen su propia paleta en `PresaRuta.java`.
+- El método `agregarLedsAlHardware()` **superpone** LEDs sin limpiar el resto del panel (comando daemon `agregar:`). Es lo que permite pintar de naranja sobre el verde en la fase de aviso del minijuego, y lo que permite a una vía multicolormandarse en varios viajes sin apagarse entre grupos.
 - `leds.py` acepta el color en formato HEX (`RRGGBB`) como parámetro adicional tanto en el modo CLI como en el daemon, añade el comando `agregar` y el parámetro `limpiar` (para no borrar la escena previa).
+
+> **Percepción del color:** el brillo del panel es un único valor (`CONFIGURACION_LED.brillo`) que se aplica por igual a los tres canales. En los WS2812B el verde tiene bastante más eficacia lumínica que el azul, así que ambos no se ven igual de intensos con el mismo brillo. Para igualarlos habría que aplicar una ganancia por canal antes de enviar el color al bus.
 
 ## 📄 Licencia
 

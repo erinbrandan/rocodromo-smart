@@ -12,6 +12,14 @@ import os
 
 FORCE_SIMULATION = os.environ.get("FORCE_SIMULATION", "").lower() in ("1", "true", "yes")
 
+# Orden de las tripletas de color en el bus de LEDs.
+# Los WS2812B son nativos GRB (Verde, Rojo, Azul): el PRIMER byte del bus es el
+# verde, no el rojo. En esta instalación la librería de Adafruit no reordena las
+# tripletas que recibe, así que hay que entregárselas ya en orden GRB.
+# Comprobado en hardware: FF0000 (rojo) se veía verde antes de esta corrección.
+# Si algún día el panel mostrase los colores con los canales cruzados, cambia a "RGB".
+ORDEN_CANALES = "GRB"
+
 try:
     import board
     import neopixel
@@ -28,14 +36,25 @@ def _advertencia_dependencias():
 
 
 def _hex_a_rgb(color_hex):
-    """Convierte un color hexadecimal 'RRGGBB' en una tupla (R, G, B)."""
+    """Convierte un color hexadecimal 'RRGGBB' en la tupla que espera el bus.
+
+    El hex siempre se interpreta como RRGGBB (notación habitual), pero la tupla
+    se devuelve en el orden de canales que exige la cinta física.
+    """
     color_hex = color_hex.lstrip("#")
     if len(color_hex) != 6:
         raise ValueError(f"Color hexadecimal inválido: {color_hex}")
-    return tuple(int(color_hex[i:i + 2], 16) for i in (0, 2, 4))
+
+    rojo = int(color_hex[0:2], 16)
+    verde = int(color_hex[2:4], 16)
+    azul = int(color_hex[4:6], 16)
+
+    if ORDEN_CANALES == "GRB":
+        return (verde, rojo, azul)
+    return (rojo, verde, azul)
 
 
-def encender_ruta(indices_leds, brillo=50, pin_gpio=18, total_leds=198, color="00FF96", limpiar=True):
+def encender_ruta(indices_leds, brillo=50, pin_gpio=18, total_leds=198, color="00FF00", limpiar=True):
     print(f"🤖 [Python Hardware] Procesando orden de iluminación...")
     print(f"-> Parámetros: Total LEDs: {total_leds} | Pin GPIO: {pin_gpio} | Brillo: {brillo} | Color: #{color} | Limpiar previo: {limpiar}")
     print(f"-> LEDs a encender: {indices_leds}")
@@ -104,7 +123,7 @@ def modo_daemon(total_leds, pin_gpio, brillo):
                 comando_daemon, resto = linea.split(":", 1)
                 partes = resto.rsplit(":", 1)
                 valores = partes[0]
-                color_hex = partes[1] if len(partes) == 2 else "00FF96"
+                color_hex = partes[1] if len(partes) == 2 else "00FF00"
                 indices = [int(x) for x in valores.split(",") if x]
                 rgb = _hex_a_rgb(color_hex)
                 if tira is not None:
@@ -158,7 +177,7 @@ if __name__ == "__main__":
             total_leds_dinamico = int(sys.argv[3])
             pin_gpio_dinamico = int(sys.argv[4])
             brillo_dinamico = int(sys.argv[5])
-            color_dinamico = sys.argv[6] if len(sys.argv) > 6 else "00FF96"
+            color_dinamico = sys.argv[6] if len(sys.argv) > 6 else "00FF00"
 
             encender_ruta(
                 indices_leds=lista_enteros,
@@ -184,7 +203,7 @@ if __name__ == "__main__":
             total_leds_dinamico = int(sys.argv[3])
             pin_gpio_dinamico = int(sys.argv[4])
             brillo_dinamico = int(sys.argv[5])
-            color_dinamico = sys.argv[6] if len(sys.argv) > 6 else "00FF96"
+            color_dinamico = sys.argv[6] if len(sys.argv) > 6 else "00FF00"
 
             encender_ruta(
                 indices_leds=lista_enteros,
