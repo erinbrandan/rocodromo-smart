@@ -132,7 +132,7 @@ La base de datos `rocodromo.db` se crea automáticamente al iniciar el servidor 
 | `CONFIGURACION_LED` | Parámetros físicos de la tira (total de LEDs, pin GPIO, brillo). Registro único por sistema. |
 | `USUARIOS` | Credenciales y datos de los escaladores. La contraseña se almacena como hash SHA-256. Clave primaria: correo electrónico. |
 | `RUTAS` | Catálogo global de vías de escalada creadas por los usuarios (nombre, grado, equipador, fecha de creación). |
-| `PRESAS` | Diccionario de coordenadas del panel physical (X, Y) vinculadas al índice del LED correspondiente. Se pre-cargan 198 registros maestros (grid 18×11). |
+| `PRESAS` | Diccionario de coordenadas del panel físico (X, Y) vinculadas al índice del LED correspondiente. Se pre-cargan 198 registros maestros (grid 18×11). `indice_led` identifica la **posición física** en la cadena (1 = el LED de la esquina inferior izquierda) y no se renumera nunca; las coordenadas se recalculan en cada arranque. Al ser un cable único serpenteado, las filas impares avanzan de izquierda a derecha y las pares al revés: `posicion_x` es la columna en coordenadas de pantalla (1 = izquierda, 11 = derecha) y `posicion_y` la fila (1 = inferior, 18 = superior). |
 | `RUTA_PRESAS` | Tabla intermedia N:M que asocia cada ruta con la lista de presas/LEDs que la componen. La columna `tipo` guarda el papel de cada presa dentro del diseño de la vía, con constraint CHECK: `inicio`, `intermedia` o `top` (ver [Roles de presa](#roles-de-presa-por-vía)). |
 | `HISTORIAL_ENTRENAMIENTO` | Registro de progresión del escalador. Clave primaria compuesta `(usuario_id, ruta_id)` para evitar duplicados. Campo `estado` con constraint CHECK: `proyecto` o `encadenada`. Las tres tablas cuelgan de `RUTAS` con `ON DELETE CASCADE`, así que al borrar una vía desaparecen en cascada sus presas y todas sus adoptaciones. |
 | `RANKING_PULSO_VERTICAL` | Marcas registradas en el minijuego Pulso Vertical: nombre del jugador, tiempo aguantado en segundos (con decimales) y fecha de registro. |
@@ -259,8 +259,9 @@ Al ejecutarse por primera vez, el sistema:
 
 1. Creará automáticamente el archivo `rocodromo.db` en el directorio de ejecución
 2. Ejecutará las migraciones DDL desde `db/init.sql` (creación de tablas)
-3. Poblará la tabla `PRESAS` con los 198 registros maestros del grid 18×11 (mapeo LED 1-198)
-4. Arrancará el servidor HTTP en el puerto **8080**
+3. Poblará la tabla `PRESAS` con los 198 registros maestros del grid 18×11 (mapeo LED 1-198, creciendo desde abajo)
+4. Recalculará en cada arranque las coordenadas de `PRESAS` a partir de `indice_led` (es una función pura, no necesita migración)
+5. Arrancará el servidor HTTP en el puerto **8080**
 
 ### Desarrollo sin hardware GPIO
 
@@ -403,7 +404,7 @@ Modo de entrenamiento lúdico en tiempo real implementado sobre el panel LED. El
 
 ### Flujo de la partida
 
-1. **Cuenta atrás (6 segundos):** el panel se enciende por franjas en **rojo** (filas 1–6 a los 0 s, filas 1–12 a los 2 s y el panel completo a los 4 s).
+1. **Cuenta atrás (6 segundos):** el panel se enciende por franjas en **rojo**, de arriba abajo (filas 13–18 a los 0 s, filas 7–18 a los 2 s y el panel completo a los 4 s).
 2. **Fase verde:** en el segundo 6, los 198 LEDs se encienden en **verde** y comienza el juego de resistencia.
 3. **Reducción progresiva:** cada ciclo de 3 segundos se elimina un **35%** de los LEDs activos (`Math.floor(activos * 0.35)`), con un mínimo de 1 LED por ciclo y un límite de seguridad que **nunca deja el panel con menos de 6 LEDs**.
 4. **Fase naranja (1 segundo):** los LEDs seleccionados para apagarse permanecen 1 segundo en color **naranja** antes de desaparecer, avisando al escalador del cambio.
@@ -413,7 +414,7 @@ Modo de entrenamiento lúdico en tiempo real implementado sobre el panel LED. El
 
 - **Distancia mínima de 30 cm** entre presas activas simultáneas.
 - **Alcance máximo de 130 cm** entre presas consecutivas alcanzables.
-- **Equilibrio entre zonas:** siempre quedan al menos 2 apoyos en la zona alta (filas 1–6), 2 en la media (filas 7–12) y 2 en la baja (filas 13–18).
+- **Equilibrio entre zonas:** siempre quedan al menos 2 apoyos en la zona alta (filas 13–18), 2 en la media (filas 7–12) y 2 en la baja (filas 1–6). Las zonas se definen por altura en el muro, no por número de fila.
 
 ### Arquitectura del minijuego
 

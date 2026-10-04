@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 public class JuegoPulsoVerticalService {
 
     // ------------------------------------------------------------------
-    //  Constantes del panel (grid 18×11 = 198 LEDs, fila 1 en la parte alta)
+    //  Constantes del panel (grid 18×11 = 198 LEDs, fila 1 en la parte baja)
     // ------------------------------------------------------------------
     private static final int TOTAL_LEDS = 198;
     private static final int COLS = 11;
@@ -52,13 +52,15 @@ public class JuegoPulsoVerticalService {
     // Tiempo que un LED permanece en naranja antes de apagarse
     private static final long DURACION_NARANJA_SEGUNDOS = 1;
 
-    // Zonas del panel (LEDs 1-based; filas 1-6 alta, 7-12 media, 13-18 baja)
-    private static final int LIMITE_ALTA = 66;
-    private static final int LIMITE_MEDIA = 132;
+    // Zonas del panel (LEDs 1-based). La fila 1 es la inferior, así que la zona alta
+    // del muro (filas 13-18) son los LEDs más altos y la baja (filas 1-6) los primeros.
+    private static final int LIMITE_ALTA = 132;   // filas 13-18, parte superior del muro
+    private static final int LIMITE_MEDIA = 66;    // filas 7-12, franja central
 
-    // Franjas de la cuenta atrás (Filas 12-17 -> 6-17 -> 0-17, en orden superior)
-    private static final List<Integer> FRANJA_1 = rangoLeds(1, LIMITE_ALTA);
-    private static final List<Integer> FRANJA_12 = rangoLeds(1, LIMITE_MEDIA);
+    // Franjas de la cuenta atrás: el panel se llena de arriba abajo, así que la primera
+    // franja es la zona alta (133-198) y la última el panel completo.
+    private static final List<Integer> FRANJA_1 = rangoLeds(LIMITE_ALTA + 1, TOTAL_LEDS);
+    private static final List<Integer> FRANJA_12 = rangoLeds(LIMITE_MEDIA + 1, TOTAL_LEDS);
     private static final List<Integer> FRANJA_123 = rangoLeds(1, TOTAL_LEDS);
 
     // ------------------------------------------------------------------
@@ -318,16 +320,16 @@ public class JuegoPulsoVerticalService {
         int fin;
         switch (zona) {
             case 1:
-                inicio = 1;
-                fin = LIMITE_ALTA;
+                inicio = LIMITE_ALTA + 1;
+                fin = TOTAL_LEDS;
                 break;
             case 2:
-                inicio = LIMITE_ALTA + 1;
-                fin = LIMITE_MEDIA;
+                inicio = LIMITE_MEDIA + 1;
+                fin = LIMITE_ALTA;
                 break;
             default:
-                inicio = LIMITE_MEDIA + 1;
-                fin = TOTAL_LEDS;
+                inicio = 1;
+                fin = LIMITE_MEDIA;
                 break;
         }
 
@@ -382,9 +384,9 @@ public class JuegoPulsoVerticalService {
     // ------------------------------------------------------------------
 
     private int zonaDe(int led) {
-        if (led <= LIMITE_ALTA) return 1;      // Alta (filas 1-6)
-        if (led <= LIMITE_MEDIA) return 2;     // Media (filas 7-12)
-        return 3;                              // Baja (filas 13-18)
+        if (led > LIMITE_ALTA) return 1;       // Alta (filas 13-18, parte superior del muro)
+        if (led > LIMITE_MEDIA) return 2;      // Media (filas 7-12)
+        return 3;                               // Baja (filas 1-6, parte inferior)
     }
 
     private long contarPorZona(int zona, Set<Integer> estado) {
@@ -393,13 +395,24 @@ public class JuegoPulsoVerticalService {
 
     private double distanciaCm(int ledA, int ledB) {
         int filaA = (ledA - 1) / COLS;
-        int colA = (ledA - 1) % COLS;
         int filaB = (ledB - 1) / COLS;
-        int colB = (ledB - 1) % COLS;
+        int colA = columnaDeFila(filaA, ledA);
+        int colB = columnaDeFila(filaB, ledB);
 
         double dx = (colA - colB) * CELL_CM;
         double dy = (filaA - filaB) * CELL_CM;
         return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * El cable recorre el muro en zigzag: las filas impares (contadas desde abajo,
+     * base 0 par) van de izquierda a derecha y las pares al revés, de modo que el
+     * LED siguiente siempre queda encima del anterior. Devuelve la columna en
+     * coordenadas de pantalla (0 = izquierda, COLS-1 = derecha).
+     */
+    private static int columnaDeFila(int filaBaseCero, int led) {
+        int dentro = (led - 1) % COLS;
+        return filaBaseCero % 2 == 0 ? dentro : COLS - 1 - dentro;
     }
 
     private static List<Integer> rangoLeds(int desde, int hasta) {

@@ -252,7 +252,14 @@ header p {
     display: grid;
     grid-template-columns: 0.5fr repeat(11, 1fr);
     gap: 0.35rem;
-    background-color: var(--bg-principal);
+
+    /* Configuración del fondo */
+    background-image: url('../img/luna.jpeg');
+    background-size: contain;         /* Mantiene la proporción de la luna */
+    background-position: center;      /* Centra la luna en el panel */
+    background-repeat: no-repeat;     /* Evita que se repita la imagen */
+    background-color: #0b132b;        /* Color azul oscuro para rellenar bordes si sobra espacio */
+
     padding: 0.75rem;
     border-radius: 8px;
     aspect-ratio: 9 / 19;

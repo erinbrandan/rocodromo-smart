@@ -35,6 +35,32 @@ document.addEventListener("DOMContentLoaded", () => {
     let temporizadorPulsacion = null;  // Long press para deseleccionar una presa
     let instantePulsacionLarga = 0;    // Momento del último long press (guardia anticlic)
 
+    // --- GEOMETRÍA DEL PANEL ---
+    // Grid 18x11 = 198 presas. La numeración crece desde la esquina inferior
+    // izquierda: la fila 1 es la de abajo y el LED 1 su presa más a la izquierda.
+    const PANEL_FILAS = 18;
+    const PANEL_COLS = 11;
+    const PANEL_TOTAL = PANEL_FILAS * PANEL_COLS;   // 198
+
+    // El cable es una sola cadena serpenteada por el muro, no 18 filas sueltas:
+    // las filas impares avanzan de izquierda a derecha y las pares al revés, de
+    // forma que el LED siguiente siempre queda justo encima del anterior
+    // (encima de la 11 está la 12, encima de la 22 está la 23, y así sucesivamente).
+    // 'columna' es 0 para la presa más a la izquierda de la fila y 10 para la de
+    // la derecha, siempre en coordenadas de pantalla.
+    function ledDePosicion(fila, columna) {
+        const base = (fila - 1) * PANEL_COLS;
+        const dentro = fila % 2 === 1 ? columna : PANEL_COLS - 1 - columna;
+        return base + dentro + 1;
+    }
+
+    function posicionDeLed(led) {
+        const fila = Math.floor((led - 1) / PANEL_COLS) + 1;
+        const dentro = (led - 1) % PANEL_COLS;
+        const columna = fila % 2 === 1 ? dentro : PANEL_COLS - 1 - dentro;
+        return { fila, columna };
+    }
+
     // Estado del minijuego Pulso Vertical
     let cronoPulsoIntervalo = null;    // Intervalo del cronómetro
     let cronoPulsoAcumuladoMs = 0;     // Tiempo acumulado (ms) antes de pausas
@@ -289,8 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function generarMatrizSimulada() {
         matrizPresasContenedor.innerHTML = "";
 
-        const letras = Array.from({ length: 11 }, (_, i) => String.fromCharCode(65 + i));
-        let contadorLed = 1; // Mantiene tus IDs intactos (del 1 al 198)
+        const letras = Array.from({ length: PANEL_COLS }, (_, i) => String.fromCharCode(65 + i));
 
         // FILA 0: Cabecera de letras superiores
         // Esquina superior izquierda (intersección vacía)
@@ -305,8 +330,10 @@ document.addEventListener("DOMContentLoaded", () => {
             matrizPresasContenedor.appendChild(etiquetaLetra);
         });
 
-        // FILAS 1 a 18: Líneas del panel
-        for (let fila = 1; fila <= 18; fila++) {
+        // FILAS: la numeración crece desde abajo, así que se dibuja de la 18 a la 1.
+        // Dentro de cada fila la cadena serpentea, de modo que las pares se pintan
+        // al revés para que el número mostrado coincida con el LED real.
+        for (let fila = PANEL_FILAS; fila >= 1; fila--) {
             // Primer elemento de la fila: El número indicador de la izquierda
             const etiquetaNumero = document.createElement("div");
             etiquetaNumero.className = "eje-coordenada";
@@ -314,8 +341,8 @@ document.addEventListener("DOMContentLoaded", () => {
             matrizPresasContenedor.appendChild(etiquetaNumero);
 
             // Siguientes 11 elementos: Las presas reales de la línea (columnas A-K)
-            for (let col = 0; col < 11; col++) {
-                const idActual = contadorLed; // Guardamos el valor actual para el listener
+            for (let col = 0; col < PANEL_COLS; col++) {
+                const idActual = ledDePosicion(fila, col);
 
                 const nodo = document.createElement("div");
                 nodo.className = "nodo-presa";
@@ -341,11 +368,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 matrizPresasContenedor.appendChild(nodo);
-                contadorLed++;
             }
         }
 
-        console.log(`🎮 Matriz generada con éxito. Total LEDs mapeados: ${contadorLed - 1}`);
+        console.log(`🎮 Matriz generada con éxito. Total LEDs mapeados: ${PANEL_TOTAL}`);
     }
 
     // --- GESTIÓN DE NODOS EN MODO CONSTRUCTOR ---
@@ -741,7 +767,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     btnTest.addEventListener("click", () => {
-        const ledsTest = Array.from({ length: 198 }, (_, i) => i + 1);
+        const ledsTest = Array.from({ length: PANEL_TOTAL }, (_, i) => i + 1);
         fetch("/api/hardware/encender-manual", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -829,10 +855,12 @@ document.addEventListener("DOMContentLoaded", () => {
     // franjas rojas en la cuenta atrás y apagado progresivo en verde.
     // =====================================================================
 
-    const SIM_TOTAL = 198;
-    const SIM_COLS = 11;
-    const SIM_LIM_ALTA = 66;
-    const SIM_LIM_MEDIA = 132;
+    const SIM_TOTAL = PANEL_TOTAL;
+    const SIM_COLS = PANEL_COLS;
+    // La fila 1 es la inferior, así que la zona alta del muro (filas 13-18) son
+    // los LEDs más altos y la zona baja (filas 1-6) los primeros.
+    const SIM_LIM_ALTA = 12 * SIM_COLS;   // 132: por debajo está la zona media
+    const SIM_LIM_MEDIA = 6 * SIM_COLS;   // 66: por debajo está la zona baja
     const SIM_CELL_CM = 24;
     const SIM_DIST_MIN = 30;
     const SIM_DIST_MAX = 130;
@@ -854,7 +882,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function generarMatrizPulso() {
         matrizPulso.innerHTML = "";
 
-        const letras = Array.from({ length: 11 }, (_, i) => String.fromCharCode(65 + i));
+        const letras = Array.from({ length: PANEL_COLS }, (_, i) => String.fromCharCode(65 + i));
 
         // Esquina superior izquierda + cabecera de letras (A-K)
         matrizPulso.appendChild(document.createElement("div"));
@@ -865,21 +893,20 @@ document.addEventListener("DOMContentLoaded", () => {
             matrizPulso.appendChild(etiqueta);
         });
 
-        // Filas 1-18: número a la izquierda + 11 presas
-        let idLed = 1;
-        for (let fila = 1; fila <= 18; fila++) {
+        // Filas 18-1 de arriba abajo: número a la izquierda + 11 presas
+        for (let fila = PANEL_FILAS; fila >= 1; fila--) {
             const etiquetaNumero = document.createElement("div");
             etiquetaNumero.className = "eje-coordenada";
             etiquetaNumero.textContent = fila;
             matrizPulso.appendChild(etiquetaNumero);
 
-            for (let col = 0; col < 11; col++) {
+            for (let col = 0; col < PANEL_COLS; col++) {
+                const idLed = ledDePosicion(fila, col);
                 const nodo = document.createElement("div");
                 nodo.className = "nodo-presa";
                 nodo.id = `led-pulso-${idLed}`;
                 nodo.textContent = idLed;
                 matrizPulso.appendChild(nodo);
-                idLed++;
             }
         }
     }
@@ -910,9 +937,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // FASE 1: Cuenta atrás con franjas rojas (0s, 2s, 4s -> 6s)
             if (t < 2) {
-                pintarZonaPulso(1, SIM_LIM_ALTA, "rojo");
+                pintarZonaPulso(SIM_LIM_ALTA + 1, SIM_TOTAL, "rojo");
             } else if (t < 4) {
-                pintarZonaPulso(1, SIM_LIM_MEDIA, "rojo");
+                pintarZonaPulso(SIM_LIM_MEDIA + 1, SIM_TOTAL, "rojo");
             } else if (t < 6) {
                 pintarZonaPulso(1, SIM_TOTAL, "rojo");
             } else {
@@ -1016,9 +1043,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Lógica espejo del service Java -------------------------------------
 
     function zonaDeSim(led) {
-        if (led <= SIM_LIM_ALTA) return 1;
-        if (led <= SIM_LIM_MEDIA) return 2;
-        return 3;
+        if (led > SIM_LIM_ALTA) return 1;   // Alta (filas 13-18, parte superior)
+        if (led > SIM_LIM_MEDIA) return 2;   // Media (filas 7-12)
+        return 3;                           // Baja (filas 1-6, parte inferior)
     }
 
     function contarPorZonaSim(zona, estado) {
@@ -1030,12 +1057,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function distanciaCmSim(ledA, ledB) {
-        const filaA = Math.floor((ledA - 1) / SIM_COLS);
-        const colA = (ledA - 1) % SIM_COLS;
-        const filaB = Math.floor((ledB - 1) / SIM_COLS);
-        const colB = (ledB - 1) % SIM_COLS;
-        const dx = (colA - colB) * SIM_CELL_CM;
-        const dy = (filaA - filaB) * SIM_CELL_CM;
+        const posA = posicionDeLed(ledA);
+        const posB = posicionDeLed(ledB);
+        const dx = (posA.columna - posB.columna) * SIM_CELL_CM;
+        const dy = (posA.fila - posB.fila) * SIM_CELL_CM;
         return Math.hypot(dx, dy);
     }
 
@@ -1088,8 +1113,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function ledApagadoValidoEnZonaSim(zona) {
-        const inicio = zona === 1 ? 1 : zona === 2 ? SIM_LIM_ALTA + 1 : SIM_LIM_MEDIA + 1;
-        const fin = zona === 1 ? SIM_LIM_ALTA : zona === 2 ? SIM_LIM_MEDIA : SIM_TOTAL;
+        const inicio = zona === 1 ? SIM_LIM_ALTA + 1 : zona === 2 ? SIM_LIM_MEDIA + 1 : 1;
+        const fin = zona === 1 ? SIM_TOTAL : zona === 2 ? SIM_LIM_ALTA : SIM_LIM_MEDIA;
 
         const candidatos = [];
         for (let led = inicio; led <= fin; led++) {

@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS RUTAS (
 );
 
 -- 4. Diccionario de Presas (Mapeo de coordenadas al número de LED)
+-- La numeración crece desde la esquina INFERIOR izquierda: la fila 1 es la de abajo
+-- y el LED 1 es su presa más a la izquierda. posicion_x = columna (1 = A, 11 = K),
+-- posicion_y = fila (1 = inferior, 18 = superior).
 CREATE TABLE IF NOT EXISTS PRESAS (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     posicion_x INTEGER NOT NULL,
