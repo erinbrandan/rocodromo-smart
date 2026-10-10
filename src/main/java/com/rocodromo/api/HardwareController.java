@@ -4,6 +4,7 @@
  */
 package com.rocodromo.api;
 
+import com.rocodromo.hardware.FocoService;
 import com.rocodromo.hardware.LedService;
 import com.rocodromo.model.PresaRuta;
 import io.javalin.http.Context;
@@ -23,25 +24,29 @@ import java.util.Map;
 public class HardwareController {
 
     private static final LedService ledService = new LedService();
+    private static final FocoService focoService = new FocoService();
 
     // ---------------------------------------------------------------
-    //  Ciclo de vida del daemon
+    //  Ciclo de vida de los daemons
     // ---------------------------------------------------------------
 
     /**
-     * Inicia el daemon Python. Llamado al arrancar la aplicación.
+     * Inicia los daemons Python (tira de LEDs y relé del foco). Llamado al
+     * arrancar la aplicación.
      */
     public static void iniciarHardware() {
         System.out.println("🔌 [HardwareController] Inicializando subsistema de hardware...");
         ledService.iniciarDaemon();
+        focoService.iniciarDaemon();
     }
 
     /**
-     * Detiene el daemon Python. Llamado al apagar la aplicación.
+     * Detiene los daemons Python. Llamado al apagar la aplicación.
      */
     public static void detenerHardware() {
         System.out.println("🔌 [HardwareController] Deteniendo subsistema de hardware...");
         ledService.detenerDaemon();
+        focoService.detenerDaemon();
     }
 
     // ---------------------------------------------------------------
@@ -62,6 +67,51 @@ public class HardwareController {
             ctx.status(502);
             ctx.json(Map.of("status", "error", "message", "No se pudo apagar el panel."));
         }
+    }
+
+    /**
+     * POST /api/hardware/foco
+     * Body: {"accion": "apagar"} | {"accion": "encender"}
+     * Acciona el relé del foco real por el GPIO 23 (abre/cierra el circuito).
+     */
+    public static void controlarFoco(Context ctx) {
+        try {
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            String accion = body.get("accion") instanceof String s ? s : "apagar";
+
+            if (!"apagar".equals(accion) && !"encender".equals(accion)) {
+                ctx.status(400);
+                ctx.json(Map.of("status", "error", "message", "La acción debe ser 'apagar' o 'encender'."));
+                return;
+            }
+
+            System.out.println("📬 [API] Petición web: Foco " + accion + " (relé GPIO 23).");
+            boolean exito = focoService.controlarFoco(accion);
+
+            if (exito) {
+                ctx.status(200);
+                ctx.json(Map.of(
+                        "status", "success",
+                        "apagado", focoService.isApagado(),
+                        "message", "apagar".equals(accion) ? "Foco apagado." : "Foco encendido."));
+            } else {
+                ctx.status(502);
+                ctx.json(Map.of("status", "error", "message", "No se pudo accionar el relé del foco."));
+            }
+        } catch (Exception e) {
+            ctx.status(500);
+            ctx.json(Map.of("status", "error", "message", "Error al procesar el JSON: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/hardware/foco
+     * Devuelve el estado actual del relé del foco para que el frontend pueda
+     * pintar el botón correctamente tras recargar la página.
+     */
+    public static void estadoFoco(Context ctx) {
+        ctx.status(200);
+        ctx.json(Map.of("status", "success", "apagado", focoService.isApagado()));
     }
 
     /**

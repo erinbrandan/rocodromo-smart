@@ -23,12 +23,12 @@ import java.util.concurrent.TimeUnit;
  * juego: una cuenta atrás de 6 segundos con franjas en rojo y, a partir del
  * segundo 6, la fase de juego con LEDs en verde. Durante la fase de juego las
  * presas se apagan progresivamente en cada ciclo eliminando un 35% de los LEDs
- * activos (mínimo 1, sin bajar nunca de 6) y respetando la distancia
+ * activos (mínimo 1, sin bajar nunca de 10) y respetando la distancia
  * biomecánica (mínimo 30 cm, máximo 130 cm) y el equilibrio entre zonas (al
  * menos 2 apoyos por zona: alta, media y baja). Cada LED que se va a apagar
- * permanece 1 segundo en color naranja antes de desaparecer. Al quedar solo 6
+ * permanece 5 segundos en color naranja antes de desaparecer. Al quedar solo 10
  * LEDs verdes se entra en un bucle infinito en el que se apaga un LED (previo
- * paso por naranja durante 1 segundo) y se enciende otro.
+ * paso por naranja durante 5 segundos) y se enciende otro.
  *
  * @author Erin Brandan Vazquez Enes
  * @version 1.0
@@ -50,7 +50,11 @@ public class JuegoPulsoVerticalService {
     private static final long TICK_SEGUNDOS = 3;
 
     // Tiempo que un LED permanece en naranja antes de apagarse
-    private static final long DURACION_NARANJA_SEGUNDOS = 1;
+    private static final long DURACION_NARANJA_SEGUNDOS = 5;
+
+    // Número mínimo de LEDs verdes que se mantienen siempre activos en la fase de
+    // juego: es el suelo del apagado progresivo y el tamaño del bucle infinito final.
+    private static final int MIN_LEDS_ACTIVOS = 10;
 
     // Zonas del panel (LEDs 1-based). La fila 1 es la inferior, así que la zona alta
     // del muro (filas 13-18) son los LEDs más altos y la baja (filas 1-6) los primeros.
@@ -75,6 +79,7 @@ public class JuegoPulsoVerticalService {
 
     private final List<ScheduledFuture<?>> tareasPendientes = new ArrayList<>();
     private ScheduledFuture<?> tareaJuego;
+    private ScheduledFuture<?> tareaNaranja;
 
     private volatile boolean juegoActivo = false;
     private volatile boolean pausado = false;
@@ -186,9 +191,12 @@ public class JuegoPulsoVerticalService {
         synchronized (lock) {
             if (!juegoActivo || pausado) return;
 
-            // Si un apagado quedó pendiente (pausa durante el naranja), se completa ahora
+            // Si un apagado quedó pendiente (pausa durante el naranja), se completa ahora.
+            // Si aún no venció el plazo del naranja, se espera sin iniciar un ciclo nuevo.
             if (!ledsNaranja.isEmpty()) {
-                completarApagado();
+                if (tareaNaranja == null || tareaNaranja.isDone()) {
+                    completarApagado();
+                }
                 return;
             }
 
@@ -199,7 +207,8 @@ public class JuegoPulsoVerticalService {
             ledAEncender = accion.aEncender;
             redibujar(); // Pinta en naranja los LEDs que se van a apagar
 
-            tareasPendientes.add(scheduler.schedule(this::completarApagado, DURACION_NARANJA_SEGUNDOS, TimeUnit.SECONDS));
+            tareaNaranja = scheduler.schedule(this::completarApagado, DURACION_NARANJA_SEGUNDOS, TimeUnit.SECONDS);
+            tareasPendientes.add(tareaNaranja);
         }
     }
 
@@ -229,9 +238,9 @@ public class JuegoPulsoVerticalService {
     private AccionApagado seleccionarAccion() {
         int totalActivos = ledsVerdes.size();
 
-        if (totalActivos > 6) {
+        if (totalActivos > MIN_LEDS_ACTIVOS) {
             return seleccionarApagadoProgresivo(totalActivos);
-        } else if (totalActivos == 6) {
+        } else if (totalActivos == MIN_LEDS_ACTIVOS) {
             return seleccionarBucleInfinito();
         }
         return null;
@@ -241,21 +250,21 @@ public class JuegoPulsoVerticalService {
         // Reducción porcentual del 35% sobre los LEDs activos en cada ciclo
         int ledsAQuitar = (int) Math.floor(totalActivos * 0.35);
 
-        // Mínimo 1 LED por ciclo mientras haya más de 6 activos
+        // Mínimo 1 LED por ciclo mientras haya más LEDs que el mínimo garantizado
         if (ledsAQuitar < 1) {
             ledsAQuitar = 1;
         }
 
-        // Límite de seguridad: nunca dejar el panel con menos de 6 LEDs
-        if (totalActivos - ledsAQuitar < 6) {
-            ledsAQuitar = totalActivos - 6;
+        // Límite de seguridad: nunca dejar el panel con menos de MIN_LEDS_ACTIVOS
+        if (totalActivos - ledsAQuitar < MIN_LEDS_ACTIVOS) {
+            ledsAQuitar = totalActivos - MIN_LEDS_ACTIVOS;
         }
 
         // Se seleccionan los LEDs respetando la biomecánica sin mutar el estado
         List<Integer> aApagar = new ArrayList<>();
         Set<Integer> estadoSimulado = new TreeSet<>(ledsVerdes);
 
-        while (aApagar.size() < ledsAQuitar && estadoSimulado.size() > 6) {
+        while (aApagar.size() < ledsAQuitar && estadoSimulado.size() > MIN_LEDS_ACTIVOS) {
             Integer led = seleccionarUnLedParaApagar(estadoSimulado);
             if (led == null) break;
             estadoSimulado.remove(led);
@@ -362,7 +371,7 @@ public class JuegoPulsoVerticalService {
         if (ledsVerdes.isEmpty()) return;
         ledService.enviarRutaAlHardware(new ArrayList<>(ledsVerdes), LedService.COLOR_VERDE);
 
-        // Los LEDs en fase de apagado se superponen en naranja (1 segundo)
+        // Los LEDs en fase de apagado se superponen en naranja (5 segundos)
         if (!ledsNaranja.isEmpty()) {
             ledService.agregarLedsAlHardware(new ArrayList<>(ledsNaranja), LedService.COLOR_NARANJA);
         }

@@ -384,6 +384,7 @@ rocodromo-smart/
 | `PUT` | `/api/rutas/{id}/estado` | Cambiar estado de la vía (`proyecto` → `encadenada`) |
 | `DELETE` | `/api/rutas/{id}` | Eliminar la vía **de todo el sistema** (ver [Ciclo de vida de una vía](#ciclo-de-vida-de-una-vía)) |
 | `POST` | `/api/hardware/apagar` | Apagar todos los LEDs del panel |
+| `POST` | `/api/hardware/foco` | Accionar el relé del foco real (GPIO 23): `{"accion": "apagar"}` o `{"accion": "encender"}` |
 | `POST` | `/api/hardware/encender-manual` | Encender LEDs por grupos con color (diagnóstico y diseño de vías) |
 | `POST` | `/api/hardware/encender-led` | Encender un único LED (feedback en tiempo real) |
 | `POST` | `/api/hardware/agregar-led` | Superponer un único LED sin limpiar el panel |
@@ -406,9 +407,9 @@ Modo de entrenamiento lúdico en tiempo real implementado sobre el panel LED. El
 
 1. **Cuenta atrás (6 segundos):** el panel se enciende por franjas en **rojo**, de arriba abajo (filas 13–18 a los 0 s, filas 7–18 a los 2 s y el panel completo a los 4 s).
 2. **Fase verde:** en el segundo 6, los 198 LEDs se encienden en **verde** y comienza el juego de resistencia.
-3. **Reducción progresiva:** cada ciclo de 3 segundos se elimina un **35%** de los LEDs activos (`Math.floor(activos * 0.35)`), con un mínimo de 1 LED por ciclo y un límite de seguridad que **nunca deja el panel con menos de 6 LEDs**.
-4. **Fase naranja (1 segundo):** los LEDs seleccionados para apagarse permanecen 1 segundo en color **naranja** antes de desaparecer, avisando al escalador del cambio.
-5. **Bucle infinito:** con exactamente 6 LEDs (mínimo 2 apoyos por zona: alta, media y baja) se entra en un bucle en el que se apaga 1 LED (previo paso por naranja) y se enciende 1 LED nuevo biomecánicamente válido.
+3. **Reducción progresiva:** cada ciclo de 3 segundos se elimina un **35%** de los LEDs activos (`Math.floor(activos * 0.35)`), con un mínimo de 1 LED por ciclo y un límite de seguridad que **nunca deja el panel con menos de 10 LEDs**.
+4. **Fase naranja (5 segundos):** los LEDs seleccionados para apagarse permanecen 5 segundos en color **naranja** antes de desaparecer, avisando al escalador del cambio.
+5. **Bucle infinito:** con exactamente 10 LEDs (mínimo 2 apoyos por zona: alta, media y baja) se entra en un bucle en el que se apaga 1 LED (previo paso por naranja) y se enciende 1 LED nuevo biomecánicamente válido.
 
 ### Restricciones biomecánicas
 

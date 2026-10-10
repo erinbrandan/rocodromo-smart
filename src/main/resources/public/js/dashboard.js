@@ -70,6 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- ELEMENTOS DEL DOM ---
     const nombreUsuarioHeader = document.getElementById("nombre-usuario-header");
     const btnLogout = document.getElementById("btn-logout");
+    const btnFoco = document.getElementById("btn-foco");
     const badgeConexion = document.getElementById("badge-conexion");
 
     // Botones de Hardware
@@ -152,6 +153,44 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.removeItem("sesion_usuario");
         console.log("🧹 Sesión local destruida.");
         window.location.href = "/login.html";
+    });
+
+    // BOTÓN APAGAR/ENCENDER FOCO (relé de 1 canal en el GPIO 23 → corta o restablece el circuito del foco real)
+    let focoApagado = false;
+
+    function aplicarEstadoBtnFoco() {
+        btnFoco.textContent = focoApagado ? "💡 Encender Foco" : "💡 Apagar Foco";
+        btnFoco.classList.toggle("apagado", focoApagado);
+        btnFoco.title = focoApagado
+            ? "El foco está apagado: pulsa para encenderlo"
+            : "El foco está encendido: pulsa para apagarlo";
+    }
+
+    // Al cargar la página se consulta el estado real del relé para pintar el botón
+    fetch("/api/hardware/foco")
+        .then(res => res.json())
+        .then(data => {
+            focoApagado = Boolean(data.apagado);
+            aplicarEstadoBtnFoco();
+        })
+        .catch(err => console.error("Error al consultar el estado del foco:", err));
+
+    btnFoco.addEventListener("click", () => {
+        const accion = focoApagado ? "encender" : "apagar";
+        fetch("/api/hardware/foco", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accion })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.apagado !== undefined) {
+                    focoApagado = Boolean(data.apagado);
+                    aplicarEstadoBtnFoco();
+                }
+                alert(data.message);
+            })
+            .catch(err => console.error("Error al accionar el foco:", err));
     });
 
     // --- LÓGICA DE CAMBIO DE PESTAÑAS PRINCIPALES (TABS) ---
@@ -865,6 +904,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const SIM_DIST_MIN = 30;
     const SIM_DIST_MAX = 130;
     const SIM_TICK_SEGUNDOS = 3;
+    const SIM_DURACION_NARANJA = 5;
 
     const simPulso = {
         iniciado: false,
@@ -946,9 +986,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 // FASE 2: Juego en verde con apagado progresivo
                 // Primer tick a los 9 s (igual que scheduleWithFixedDelay de Java: 3s tras la fase verde)
                 if (simPulso.pendienteHasta > 0) {
-                    // Los LEDs naranja permanecen 1 segundo antes de apagarse
+                    // Los LEDs naranja permanecen 5 segundos antes de apagarse
                     if (t >= simPulso.pendienteHasta) {
                         completarApagadoSim();
+                        // Como en Java, el próximo ciclo solo arranca en el siguiente tick
+                        simPulso.lastTick = Math.floor((t - 6 - SIM_TICK_SEGUNDOS) / SIM_TICK_SEGUNDOS);
                     }
                 } else {
                     const tick = Math.floor((t - 6 - SIM_TICK_SEGUNDOS) / SIM_TICK_SEGUNDOS);
@@ -958,7 +1000,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (accion) {
                             simPulso.ledsNaranja = new Set(accion.aApagar);
                             simPulso.ledAEncender = accion.aEncender;
-                            simPulso.pendienteHasta = t + 1;
+                            simPulso.pendienteHasta = t + SIM_DURACION_NARANJA;
                         }
                     }
                 }
@@ -1033,7 +1075,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const el = document.getElementById(`led-pulso-${i}`);
             if (el) el.classList.add("activo");
         });
-        // Los LEDs en fase de apagado se superponen en naranja (1 segundo)
+        // Los LEDs en fase de apagado se superponen en naranja (5 segundos)
         simPulso.ledsNaranja.forEach(i => {
             const el = document.getElementById(`led-pulso-${i}`);
             if (el) el.classList.add("naranja");

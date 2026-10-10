@@ -201,6 +201,31 @@ header p {
     border-color: var(--color-peligro);
 }
 
+.btn-foco-icono {
+    background: none;
+    border: 1px solid var(--borde);
+    color: var(--texto-mutado);
+    padding: 0.4rem 0.8rem;
+    min-height: 38px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.btn-foco-icono:hover {
+    background-color: #f59e0b;
+    color: white;
+    border-color: #f59e0b;
+}
+
+.btn-foco-icono.apagado {
+    background-color: #f59e0b;
+    color: white;
+    border-color: #f59e0b;
+}
+
 /* Listado de Vías */
 .lista-vias {
     display: flex;

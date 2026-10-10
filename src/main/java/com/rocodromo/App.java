@@ -72,6 +72,10 @@ public class App {
         app.post("/api/hardware/apagar", HardwareController::apagarPanel);
         app.post("/api/hardware/encender-manual", HardwareController::encenderManual);
 
+        // Relé del foco real (GPIO 23)
+        app.get("/api/hardware/foco", HardwareController::estadoFoco);
+        app.post("/api/hardware/foco", HardwareController::controlarFoco);
+
         // Control fino de LEDS individuales (feedback en tiempo real desde el creador de vías)
         app.post("/api/hardware/encender-led", HardwareController::encenderUnicoLed);
         app.post("/api/hardware/agregar-led", HardwareController::agregarLed);
